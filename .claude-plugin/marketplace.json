@@ -1,0 +1,25 @@
+{
+  "name": "agents-discipline",
+  "owner": {
+    "name": "rodrigoterra"
+  },
+  "plugins": [
+    {
+      "name": "agents-discipline",
+      "source": "./",
+      "description": "Agents Discipline & Good Project Management for any Claude Code project. Bootstraps the 'quiet files' (CLAUDE.md, AGENTS.md, INDEX.md, specs/, .claude/hooks, rules, output-styles, settings) and wires AGENTS.md so OpenAI Codex can adversarially review what Claude shipped.",
+      "version": "1.0.0",
+      "category": "workflow",
+      "keywords": [
+        "discipline",
+        "project-management",
+        "claude-md",
+        "agents-md",
+        "codex",
+        "adversarial-review",
+        "specs",
+        "hooks"
+      ]
+    }
+  ]
+}
