@@ -1,0 +1,19 @@
+services:
+  voice-radio-poc:
+    build: .
+    container_name: voice-radio-poc
+    ports:
+      - "3001:3001"
+      - "5173:5173"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PORT=3001
+      - VITE_API_BASE_URL=http://localhost:3001
+      - DEFAULT_TEXT_MODEL=${DEFAULT_TEXT_MODEL:-gpt-5.4-nano}
+      - DEFAULT_TEXT_MODEL_FALLBACK=${DEFAULT_TEXT_MODEL_FALLBACK:-gpt-5.4-mini}
+      - DEFAULT_TTS_MODEL=${DEFAULT_TTS_MODEL:-gpt-4o-mini-tts}
+      - DEFAULT_TTS_VOICE=${DEFAULT_TTS_VOICE:-alloy}
+    volumes:
+      - .:/workspace/voice-radio-poc
+      - /workspace/voice-radio-poc/node_modules
+    command: npm run dev

@@ -1,0 +1,47 @@
+# Starglazer Voice Radio PoC
+
+> Local proof-of-concept that turns a free-form scene brief into a structured CAPCOM/SHIP radio script (Zod-validated JSON), generates per-utterance speech via OpenAI TTS, applies deterministic radio DSP (PTT, Quindar tones, bitcrush, scintillation, packet loss, hiss bed, master dynamics), and stitches the final WAV. TypeScript monorepo, npm workspaces, React + Vite + Express. Single-machine, no auth, no cloud.
+
+The two highest-signal entry points for any agent are `AGENTS.md` (canonical multi-AI scope) and `CLAUDE.md` (project memory + known sharp edges). `README.md` is the human walkthrough.
+
+## Agent contracts
+- [AGENTS.md](AGENTS.md): canonical multi-AI rules — scope, workflow, constraints, definition of done.
+- [CLAUDE.md](CLAUDE.md): Claude Code project memory — repo map, commands, hard constraints, known sharp edges from latest review.
+- [docs/alpha/ALPHA2_CANONICAL_FLOW.md](docs/alpha/ALPHA2_CANONICAL_FLOW.md): current ALPHA2 narrative/audio flow, including Weather split into Earth Weather and Space Weather.
+- [docs/agent-changelog.md](docs/agent-changelog.md): chronological log of cross-cutting agent interventions (security passes, CI workflows, convention changes). Read for the *why* behind state that doesn't fit in commit messages.
+- [docs/handoff/new-codex-window-handoff.md](docs/handoff/new-codex-window-handoff.md): bootstrapping a fresh OpenAI Codex session against this repo.
+- [docs/handoff/chatgpt-radio-controls-prompt.md](docs/handoff/chatgpt-radio-controls-prompt.md): handoff prompt for ChatGPT design work on radio controls.
+
+## Setup and operations
+- [README.md](README.md): step-by-step beginner setup, dev/test/build commands, Docker and NVM workflows, troubleshooting.
+- [.env.example](.env.example): required environment variables (OpenAI key, ports, model defaults, cost guard).
+- [Dockerfile](Dockerfile) and [docker-compose.yml](docker-compose.yml): containerized dev stack.
+
+## Architecture
+- [docs/architecture.md](docs/architecture.md): end-to-end request flow, audio subsystem modules, guardrails (cache, usage log, cost stop, path safety).
+- [docs/api.md](docs/api.md): HTTP API contract for `/api/script/*`, `/api/tts/*`, `/api/audio/*`, `/api/spectrogram/*`.
+
+## Audio and DSP
+- [docs/audio-presets.md](docs/audio-presets.md): channel profile / signal quality / Quindar mode definitions.
+- [docs/voice-controls.md](docs/voice-controls.md): voice profile and TTS control mapping.
+- [docs/radio-controls-web-audio-spec.md](docs/radio-controls-web-audio-spec.md): Web Audio mapping spec for in-browser preview.
+- [docs/conversation-flow-space-comm.md](docs/conversation-flow-space-comm.md): script structure for space-comm scenes.
+- [docs/environment-simulator.md](docs/environment-simulator.md): mission geometry / space weather environment model.
+- [docs/spectrograms.md](docs/spectrograms.md): FFmpeg spectrogram generation, NASA reference handling, public URL surface.
+
+## Design system
+- [design_handoff_voice_radio_v3/README.md](design_handoff_voice_radio_v3/README.md): design system overview.
+- [design_handoff_voice_radio_v3/components.md](design_handoff_voice_radio_v3/components.md): component inventory and rules.
+- [design_handoff_voice_radio_v3/screens/01-console.md](design_handoff_voice_radio_v3/screens/01-console.md), [02-voice-lab.md](design_handoff_voice_radio_v3/screens/02-voice-lab.md), [03-fx-lab.md](design_handoff_voice_radio_v3/screens/03-fx-lab.md), [04-stitch.md](design_handoff_voice_radio_v3/screens/04-stitch.md): per-screen design specs.
+- [design_handoff_voice_radio_v3/tokens.css](design_handoff_voice_radio_v3/tokens.css), [tokens.json](design_handoff_voice_radio_v3/tokens.json): design tokens.
+
+## Source of truth (code)
+- [packages/schema/src/index.ts](packages/schema/src/index.ts): Zod schema + OpenAI strict JSON Schema for script generation.
+- [packages/script-composer/prompt.md](packages/script-composer/prompt.md), [prompt-fallback.md](packages/script-composer/prompt-fallback.md): primary and fallback composer prompts.
+- [apps/server/src/index.ts](apps/server/src/index.ts): Express API (single-file by intent).
+- [apps/server/src/audio/spectrogram.ts](apps/server/src/audio/spectrogram.ts): FFmpeg builder and path-safety utilities.
+- [packages/audio-fx/src/index.ts](packages/audio-fx/src/index.ts): deterministic DSP pipeline and WAV stitch.
+
+## Optional
+- [docs/handoff/chatgpt-radio-controls-prompt.md](docs/handoff/chatgpt-radio-controls-prompt.md): design-context-loading prompt — useful only when handing off to a fresh agent for radio-controls UI work.
+- [packages/script-composer/prompt-fallback.md](packages/script-composer/prompt-fallback.md): used only when the primary composer model fails validation.

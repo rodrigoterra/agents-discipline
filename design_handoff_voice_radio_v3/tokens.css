@@ -1,0 +1,83 @@
+/* Voice Radio v3 — canonical design tokens.
+   Single source of truth. All colors, type, spacing, and radii come from here. */
+
+:root {
+  /* ── Color · surfaces ── */
+  --bg:        #0c0d10;
+  --panel:     #14161b;
+  --panel-hi:  #1c1f26;
+  --panel-lo:  #0f1115;
+  --hair:      #262a33;
+  --hair-hi:   #373c47;
+
+  /* ── Color · text ── */
+  --text:      #ebe7d8;
+  --muted:     #8a8b86;
+  --dim:       #4d4f54;
+
+  /* ── Color · accent (single, copper) ── */
+  --copper:       #e07a3c;
+  --copper-dim:   #a35a28;
+  --copper-glow:  rgba(224, 122, 60, 0.18);
+
+  /* ── Color · semantic ── */
+  --green:  #7ad99a;  /* ready / processed / valid / SHIP */
+  --red:    #e85d4a;  /* stale / error / mute / clip */
+  --amber:  #d9a857;  /* solo / batch / quindar / CAPCOM */
+  --blue:   #6c92d8;  /* NASA reference */
+
+  /* ── Type ── */
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-pixel:   "VT323", "JetBrains Mono", monospace;
+
+  /* ── Radii ── */
+  --r-sm: 2px;  /* tags, fader caps, meter bars */
+  --r-md: 3px;  /* buttons, dropdowns, readouts */
+  --r-lg: 4px;  /* cards, nav items */
+
+  /* ── Spacing ── */
+  --pad-card:       14px;
+  --pad-card-dense: 10px;
+  --pad-card-head:  9px 12px;
+  --pad-card-head-dense: 6px 10px;
+  --gap-card:       12px;
+  --gap-row:        10px;
+  --gap-section:    16px;
+
+  /* ── Shadows ── */
+  --shadow-card:        inset 0 1px 0 rgba(255,255,255,0.02);
+  --shadow-card-accent: 0 0 0 1px var(--copper-glow), inset 0 1px 0 rgba(255,255,255,0.02);
+  --shadow-knob:        inset 0 1px 1px rgba(255,255,255,0.04), 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-fader-cap:   0 1px 2px rgba(0,0,0,0.5);
+}
+
+/* ── Base reset ── */
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Type utility classes ── */
+.t-display-xl { font: 700 22px/1.2 var(--font-display); letter-spacing: -0.01em; }
+.t-display-md { font: 700 13px/1.2 var(--font-display); letter-spacing: 0.02em; }
+.t-tag        { font: 700 9px/1   var(--font-display); letter-spacing: 0.18em; text-transform: uppercase; }
+.t-tag-sm     { font: 700 8px/1   var(--font-display); letter-spacing: 0.18em; text-transform: uppercase; }
+.t-body-mono  { font: 400 11px/1.45 var(--font-mono); }
+.t-value-mono { font: 600 13px/1   var(--font-mono); letter-spacing: 0.04em; }
+.t-meta-mono  { font: 400 10px/1.4 var(--font-mono); }
+.t-small-mono { font: 400 9px/1.3  var(--font-mono); }
+
+.c-muted { color: var(--muted); }
+.c-dim   { color: var(--dim); }
+.c-copper { color: var(--copper); }
+.c-green  { color: var(--green); }
+.c-red    { color: var(--red); }
+.c-amber  { color: var(--amber); }
+.c-blue   { color: var(--blue); }
+
+/* ── Focus ── */
+*:focus-visible { outline: 2px solid var(--copper); outline-offset: 2px; }

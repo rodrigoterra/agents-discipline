@@ -1,0 +1,31 @@
+{
+  "name": "voice-radio-poc",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev -w @voice-radio/server\" \"npm run dev -w @voice-radio/web\"",
+    "build": "npm run build -w @voice-radio/server && npm run build -w @voice-radio/web",
+    "test": "vitest run",
+    "test:e2e": "playwright test --reporter=line",
+    "lint": "echo 'lint not configured for v1'",
+    "setup:node22": "bash ./scripts/setup-node22.sh",
+    "setup:docker": "bash ./scripts/start-docker-dev.sh"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/node": "22.10.2",
+    "concurrently": "9.1.2",
+    "tsx": "4.19.2",
+    "typescript": "5.8.3",
+    "vitest": "^2.1.9"
+  },
+  "packageManager": "npm@11.12.1",
+  "engines": {
+    "node": ">=20.11 <23",
+    "npm": ">=10"
+  }
+}

@@ -1,0 +1,1 @@
+A nave Odyssey está em aproximação orbital. CAPCOM quer confirmar correção de atitude. A nave responde com leve ruído, concentração técnica e pequena latência. Gere 4 utterances alternando CAPCOM e SHIP em pt-BR.

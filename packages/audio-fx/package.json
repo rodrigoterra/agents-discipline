@@ -1,0 +1,9 @@
+{
+  "name": "@voice-radio/audio-fx",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@voice-radio/audio-core": "0.1.0"
+  }
+}

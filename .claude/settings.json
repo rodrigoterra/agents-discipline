@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(npm run test)",
+      "Bash(npm run test -- *)",
+      "Bash(npm run test -- audio-status render-decisions narrative-audio stitch-readiness)",
+      "Bash(npm run build)",
+      "Bash(npm run test:e2e)",
+      "Bash(npm run dev)",
+      "Bash(npm run dev -- --host 127.0.0.1)",
+      "Bash(npm run setup:node22)",
+      "Bash(npm run setup:docker)",
+      "Bash(npm run build -w @voice-radio/server)",
+      "Bash(npm run build -w @voice-radio/web)",
+      "Bash(npm run dev -w @voice-radio/server)",
+      "Bash(npm run dev -w @voice-radio/web)",
+      "Bash(node examples/node_client.mjs)",
+      "Bash(source venv/bin/activate)",
+      "Bash(source venv/bin/activate && ./scripts/run_sidecar.sh)",
+      "Bash(./scripts/run_sidecar.sh)",
+      "Bash(python3 -m venv venv)",
+      "Bash(pip install -r requirements-sidecar.txt)",
+      "Bash(python scripts/download_natural_earth.py)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git branch*)",
+      "Bash(git switch*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git push*)",
+      "Bash(git pull*)",
+      "Bash(git diff --check)"
+    ],
+    "deny": [
+      "Bash(rm -rf*)",
+      "Bash(git reset --hard*)",
+      "Bash(git checkout --*)"
+    ]
+  }
+}

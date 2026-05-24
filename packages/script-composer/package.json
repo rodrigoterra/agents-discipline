@@ -1,0 +1,10 @@
+{
+  "name": "@voice-radio/script-composer",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@voice-radio/schema": "0.1.0",
+    "openai": "4.103.0"
+  }
+}
