@@ -7,7 +7,7 @@ Set up (or refresh) an **adversarial review** of the current branch by OpenAI Co
 ## Steps
 
 1. **Diff the branch** — `git diff $(git merge-base HEAD origin/main)...HEAD` (fall back to `main` or `master` as the base). Identify files changed, new tests, new public APIs.
-2. **Locate or create `AGENTS.md`** — at repo root. If missing, copy from `templates/AGENTS.md` and pre-fill project context.
+2. **Locate or create `AGENTS.md`** — at repo root. If missing, copy from `${CLAUDE_PLUGIN_ROOT}/templates/AGENTS.md` and pre-fill project context.
 3. **Append a `## Current Review Target` section** to `AGENTS.md` containing:
    - The branch name and base
    - A short summary of what Claude claims to have done

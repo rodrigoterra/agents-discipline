@@ -1,5 +1,6 @@
 {
   "name": "agents-discipline",
+  "description": "Agents Discipline & Good Project Management for Claude Code — bootstraps the 'quiet files' (CLAUDE.md, AGENTS.md, INDEX.md, specs/, .claude/ hooks, rules, output-styles, settings) and wires a Claude ↔ OpenAI Codex adversarial review loop.",
   "owner": {
     "name": "rodrigoterra"
   },

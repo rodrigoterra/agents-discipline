@@ -8,7 +8,7 @@ You are bootstrapping the **Agents Discipline** structure into the current repos
 
 1. **Survey** — `ls -la` the repo root. Detect existing `CLAUDE.md`, `AGENTS.md`, `INDEX.md`, `.claude/`, `specs/`, `tests/`, `.gitignore`. Report what's present and what's missing in one short table.
 2. **Confirm** — ask the user: "Bootstrap full structure, retrofit only what's missing, or dry-run?" Default: retrofit.
-3. **Copy templates** from this plugin's `templates/` directory into the target repo. Never overwrite existing files — if a file exists, write the template to `<name>.proposed.md` instead and tell the user.
+3. **Copy templates** from this plugin's `${CLAUDE_PLUGIN_ROOT}/templates/` directory into the target repo. (`${CLAUDE_PLUGIN_ROOT}` resolves to the plugin's install path; the working directory is the target repo, so always use this absolute path, never a bare `templates/`.) Never overwrite existing files — if a file exists, write the template to `<name>.proposed.md` instead and tell the user.
 4. **Customize**:
    - Fill the project name, primary language/framework, and package manager into `CLAUDE.md`, `AGENTS.md`, and `INDEX.md`.
    - Detect package manager from lockfiles (`pnpm-lock.yaml` → pnpm, etc.) and wire it into `pre-push.sh`.

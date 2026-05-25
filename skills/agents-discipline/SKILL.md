@@ -57,9 +57,9 @@ Well-written tests are what let you move fast with confidence. Without them, eve
 
 When invoked, ask the user which mode to run:
 
-1. **Bootstrap a new project** → install the full structure from `templates/`.
+1. **Bootstrap a new project** → install the full structure from `${CLAUDE_PLUGIN_ROOT}/templates/`.
 2. **Retrofit an existing project** → diff what's missing, add only what's absent, never overwrite.
-3. **Create a new spec** → scaffold `specs/<feature>.md` from `templates/specs/SPEC-TEMPLATE.md`.
+3. **Create a new spec** → scaffold `specs/<feature>.md` from `${CLAUDE_PLUGIN_ROOT}/templates/specs/SPEC-TEMPLATE.md`.
 4. **Trigger a Codex adversarial review** → produce/refresh `AGENTS.md` for the current branch's diff and explain how to run Codex against it.
 
 The plugin ships matching slash commands:
@@ -111,10 +111,13 @@ This is **not** "two agents agree" — it's "one agent attacks, the other defend
 
 ## Templates
 
-All file templates live in `templates/` of this plugin's repo:
+All file templates live under `${CLAUDE_PLUGIN_ROOT}/templates/` (the plugin's
+install directory — `${CLAUDE_PLUGIN_ROOT}` resolves to the absolute path at
+runtime). Always read/copy templates from that path, not a bare `templates/`,
+because the working directory at invocation is the target project, not the plugin.
 
 ```
-templates/
+${CLAUDE_PLUGIN_ROOT}/templates/
 ├── CLAUDE.md
 ├── CLAUDE.local.md
 ├── AGENTS.md
@@ -130,4 +133,4 @@ templates/
     └── rules/{api,frontend}.md
 ```
 
-Copy from there. Adapt to the target project. Don't add structure the project doesn't earn.
+Copy from `${CLAUDE_PLUGIN_ROOT}/templates/`. Adapt to the target project. Don't add structure the project doesn't earn.
