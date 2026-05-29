@@ -21281,9 +21281,16 @@ async function handle(req, res, opts, resolveDone) {
   }
   if (req.method === "GET" && path === "/image") {
     if (!opts.imagePath) return sendText(res, 404, "no image");
+    try {
+      await stat(opts.imagePath);
+    } catch {
+      return sendText(res, 404, "image not found");
+    }
     const mime = IMAGE_MIME[extname(opts.imagePath).toLowerCase()] ?? "application/octet-stream";
     res.writeHead(200, { "Content-Type": mime, "Cache-Control": "no-store" });
-    createReadStream(opts.imagePath).pipe(res);
+    const stream = createReadStream(opts.imagePath);
+    stream.on("error", () => res.destroy());
+    stream.pipe(res);
     return;
   }
   if (req.method === "POST" && path === "/done") {

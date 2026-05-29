@@ -31,7 +31,14 @@ async function main(): Promise<void> {
   source = meta.source;
 
   if (meta.hasImage) {
-    await loadImage("/image?t=" + Date.now());
+    try {
+      await loadImage("/image?t=" + Date.now());
+    } catch {
+      // The provided image couldn't be decoded — let the user pick one instead
+      // of leaving them staring at a blank canvas.
+      setStatus("Could not load the provided image — choose one to annotate.");
+      await pickFile();
+    }
   } else {
     await pickFile();
   }

@@ -514,7 +514,12 @@
     const meta = await fetch("/meta").then((r) => r.json()).catch(() => ({ hasImage: false }));
     source = meta.source;
     if (meta.hasImage) {
-      await loadImage("/image?t=" + Date.now());
+      try {
+        await loadImage("/image?t=" + Date.now());
+      } catch {
+        setStatus("Could not load the provided image \u2014 choose one to annotate.");
+        await pickFile();
+      }
     } else {
       await pickFile();
     }

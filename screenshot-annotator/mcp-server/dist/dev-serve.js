@@ -7,6 +7,7 @@ var __export = (target, all) => {
 
 // mcp-server/src/dev-serve.ts
 import { writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { resolve as resolve2 } from "node:path";
 
 // mcp-server/src/ui-server.ts
@@ -4228,9 +4229,16 @@ async function handle(req, res, opts, resolveDone) {
   }
   if (req.method === "GET" && path === "/image") {
     if (!opts.imagePath) return sendText(res, 404, "no image");
+    try {
+      await stat(opts.imagePath);
+    } catch {
+      return sendText(res, 404, "image not found");
+    }
     const mime = IMAGE_MIME[extname(opts.imagePath).toLowerCase()] ?? "application/octet-stream";
     res.writeHead(200, { "Content-Type": mime, "Cache-Control": "no-store" });
-    createReadStream(opts.imagePath).pipe(res);
+    const stream = createReadStream(opts.imagePath);
+    stream.on("error", () => res.destroy());
+    stream.pipe(res);
     return;
   }
   if (req.method === "POST" && path === "/done") {
@@ -4313,6 +4321,11 @@ function openBrowser(url) {
 // mcp-server/src/dev-serve.ts
 var arg = process.argv[2];
 var imagePath = arg ? resolve2(process.cwd(), arg) : void 0;
+if (imagePath && !existsSync(imagePath)) {
+  console.error(`Image not found: ${imagePath}`);
+  console.error("Pass a path to an existing image, or run with no argument to use the in-page file picker.");
+  process.exit(1);
+}
 var session = await startUiServer({ imagePath });
 console.log(`Annotation UI: ${session.url}`);
 if (!imagePath) console.log("(no image given \u2014 the canvas will show a file picker)");

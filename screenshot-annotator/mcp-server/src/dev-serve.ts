@@ -5,12 +5,19 @@
 //   npm run build
 //   node mcp-server/dist/dev-serve.js path/to/screenshot.png
 import { writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { startUiServer } from "./ui-server";
 import { openBrowser } from "./open-browser";
 
 const arg = process.argv[2];
 const imagePath = arg ? resolve(process.cwd(), arg) : undefined;
+
+if (imagePath && !existsSync(imagePath)) {
+  console.error(`Image not found: ${imagePath}`);
+  console.error("Pass a path to an existing image, or run with no argument to use the in-page file picker.");
+  process.exit(1);
+}
 
 const session = await startUiServer({ imagePath });
 console.log(`Annotation UI: ${session.url}`);
