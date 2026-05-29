@@ -1,0 +1,29 @@
+{
+  "name": "screenshot-annotator",
+  "description": "Annotate screenshots in a local browser canvas — outlined/striped shapes (block, eliminate), arrows, freehand pen, numbered markers, redaction boxes, and per-mark text notes — then return the flattened image plus a compact JSON sidecar into Claude's context via a TypeScript MCP server.",
+  "version": "1.0.0",
+  "author": {
+    "name": "rodrigoterra"
+  },
+  "license": "MIT",
+  "keywords": [
+    "screenshot",
+    "annotation",
+    "redaction",
+    "image",
+    "markup",
+    "canvas",
+    "mcp",
+    "vision",
+    "codex"
+  ],
+  "skills": [
+    "./skills/annotate"
+  ],
+  "mcpServers": {
+    "screenshot-annotator": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp-server/dist/index.js"]
+    }
+  }
+}

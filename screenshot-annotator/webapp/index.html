@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Screenshot Annotator</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header id="toolbar">
+      <div class="group" role="toolbar" aria-label="Annotation tools">
+        <button data-tool="rect" title="Rectangle">▭</button>
+        <button data-tool="ellipse" title="Ellipse">◯</button>
+        <button data-tool="arrow" title="Arrow">↗</button>
+        <button data-tool="pen" title="Pen">✎</button>
+        <button data-tool="marker" title="Numbered marker">①</button>
+        <button data-tool="redact" title="Redact (destroys pixels)">▮</button>
+      </div>
+
+      <div class="group" id="shape-opts">
+        <label>Color <input type="color" id="stroke" value="#e11d48" /></label>
+        <label>Fill
+          <select id="fill">
+            <option value="none">outline</option>
+            <option value="striped">striped</option>
+            <option value="solid">solid</option>
+          </select>
+        </label>
+        <label>Means
+          <select id="semantic">
+            <option value="highlight">highlight</option>
+            <option value="block">block</option>
+            <option value="eliminate">eliminate</option>
+            <option value="note">note</option>
+            <option value="step">step</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="group" id="pen-opts" style="display: none">
+        <label><input type="checkbox" id="pen-arrowhead" /> arrowhead</label>
+      </div>
+      <div class="group" id="redact-opts" style="display: none">
+        <label><input type="checkbox" id="redact-pixelate" /> pixelate</label>
+      </div>
+
+      <div class="group push">
+        <button id="undo" title="Undo (Ctrl/Cmd+Z)" disabled>↶ Undo</button>
+        <button id="redo" title="Redo (Ctrl/Cmd+Shift+Z)" disabled>↷ Redo</button>
+        <button id="clear">Clear</button>
+        <button id="done" class="primary">✓ Done</button>
+      </div>
+    </header>
+
+    <main id="stage">
+      <canvas id="canvas"></canvas>
+      <div id="picker" style="display: none">
+        <div class="picker-box">
+          <p>No screenshot was provided. Choose an image to annotate:</p>
+          <input type="file" id="file" accept="image/*" />
+        </div>
+      </div>
+    </main>
+
+    <footer id="status">Loading…</footer>
+    <script src="/bundle.js"></script>
+  </body>
+</html>
