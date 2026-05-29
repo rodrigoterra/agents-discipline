@@ -23,6 +23,13 @@ const serverBuild = {
   banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
 };
 
+/** Standalone dev launcher (smoke-test the UI without an MCP client). */
+const devBuild = {
+  ...serverBuild,
+  entryPoints: [resolve(root, "mcp-server/src/dev-serve.ts")],
+  outfile: resolve(root, "mcp-server/dist/dev-serve.js"),
+};
+
 /** Browser canvas app: a single IIFE bundle the local server serves to the page. */
 const webappBuild = {
   entryPoints: [resolve(root, "webapp/src/main.ts")],
@@ -34,7 +41,7 @@ const webappBuild = {
 };
 
 const jobs = [];
-if (which === "all" || which === "server") jobs.push(esbuild.build(serverBuild));
+if (which === "all" || which === "server") jobs.push(esbuild.build(serverBuild), esbuild.build(devBuild));
 if (which === "all" || which === "webapp") jobs.push(esbuild.build(webappBuild));
 
 if (jobs.length === 0) {
