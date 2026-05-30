@@ -38,6 +38,20 @@
         "vision",
         "codex"
       ]
+    },
+    {
+      "name": "karpathy-guidelines",
+      "source": "./karpathy-guidelines",
+      "description": "Behavioral guidelines based on Andrej Karpathy's observations of LLM coding mistakes. Helps Claude resist overcomplication, make surgical changes, surface assumptions, avoid defensive bloat, and define verifiable success criteria. Vendored from multica-ai/andrej-karpathy-skills (MIT).",
+      "version": "1.0.0",
+      "category": "development",
+      "keywords": [
+        "code-quality",
+        "best-practices",
+        "code-review",
+        "refactoring",
+        "guidelines"
+      ]
     }
   ]
 }
