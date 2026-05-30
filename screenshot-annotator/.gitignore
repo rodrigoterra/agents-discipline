@@ -1,2 +1,6 @@
 node_modules/
 *.log
+
+# Local annotation test artifacts
+annotated.png
+annotations.json

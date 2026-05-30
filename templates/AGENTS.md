@@ -53,3 +53,5 @@ You are an **adversarial reviewer**. Assume the prior agent was over-confident.
 - **Files touched:**
   - <path>
 - **Directive:** Assume each claim above is wrong until reproduced. Prioritize counter-examples over agreement.
+
+# All API endpoints must have tests
