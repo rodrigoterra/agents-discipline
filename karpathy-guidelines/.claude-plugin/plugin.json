@@ -1,0 +1,19 @@
+{
+  "name": "karpathy-guidelines",
+  "version": "1.0.0",
+  "description": "Behavioral guidelines based on Andrej Karpathy's observations of LLM coding mistakes. Helps Claude avoid overcomplication, defensive bloat, and assumption-based errors.",
+  "author": {
+    "name": "Multica AI",
+    "url": "https://github.com/multica-ai"
+  },
+  "homepage": "https://github.com/multica-ai/andrej-karpathy-skills",
+  "license": "MIT",
+  "keywords": [
+    "code-quality",
+    "best-practices",
+    "code-review",
+    "refactoring",
+    "guidelines"
+  ],
+  "skills": ["./skills/karpathy-guidelines"]
+}
