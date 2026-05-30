@@ -4047,14 +4047,14 @@ var ostring = () => stringType().optional();
 var onumber = () => numberType().optional();
 var oboolean = () => booleanType().optional();
 var coerce = {
-  string: (arg2) => ZodString.create({ ...arg2, coerce: true }),
-  number: (arg2) => ZodNumber.create({ ...arg2, coerce: true }),
-  boolean: (arg2) => ZodBoolean.create({
+  string: ((arg2) => ZodString.create({ ...arg2, coerce: true })),
+  number: ((arg2) => ZodNumber.create({ ...arg2, coerce: true })),
+  boolean: ((arg2) => ZodBoolean.create({
     ...arg2,
     coerce: true
-  }),
-  bigint: (arg2) => ZodBigInt.create({ ...arg2, coerce: true }),
-  date: (arg2) => ZodDate.create({ ...arg2, coerce: true })
+  })),
+  bigint: ((arg2) => ZodBigInt.create({ ...arg2, coerce: true })),
+  date: ((arg2) => ZodDate.create({ ...arg2, coerce: true }))
 };
 var NEVER = INVALID;
 
