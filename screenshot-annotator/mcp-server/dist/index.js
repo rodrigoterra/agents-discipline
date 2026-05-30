@@ -21276,7 +21276,11 @@ async function handle(req, res, opts, resolveDone) {
     return sendFile(res, resolve(WEBAPP_DIR, "styles.css"), "text/css; charset=utf-8");
   }
   if (req.method === "GET" && path === "/meta") {
-    const meta = { hasImage: Boolean(opts.imagePath), source: opts.imagePath ? basename(opts.imagePath) : void 0 };
+    const meta = {
+      hasImage: Boolean(opts.imagePath),
+      source: opts.imagePath ? basename(opts.imagePath) : void 0,
+      mode: opts.mode ?? "mcp"
+    };
     return sendJson(res, 200, meta);
   }
   if (req.method === "GET" && path === "/image") {

@@ -129,7 +129,7 @@ function drawAnnotation(
       const { x, y, w, h } = ann.geometry;
       fillShape(ctx, ann, stroke, px, () => ctx.rect(x * W, y * H, w * W, h * H));
       ctx.strokeRect(x * W, y * H, w * W, h * H);
-      if (ann.note) caption(ctx, ann.note, x * W, y * H, px);
+      if (ann.note) caption(ctx, ann.note, x * W, y * H, H);
       break;
     }
     case "ellipse": {
@@ -140,13 +140,13 @@ function drawAnnotation(
       ctx.beginPath();
       ctx.ellipse(cx, cy, (w / 2) * W, (h / 2) * H, 0, 0, Math.PI * 2);
       ctx.stroke();
-      if (ann.note) caption(ctx, ann.note, x * W, y * H, px);
+      if (ann.note) caption(ctx, ann.note, x * W, y * H, H);
       break;
     }
     case "arrow": {
       const { x1, y1, x2, y2 } = ann.geometry;
       drawArrow(ctx, x1 * W, y1 * H, x2 * W, y2 * H, lineWidth);
-      if (ann.note) caption(ctx, ann.note, ((x1 + x2) / 2) * W, ((y1 + y2) / 2) * H, px);
+      if (ann.note) caption(ctx, ann.note, ((x1 + x2) / 2) * W, ((y1 + y2) / 2) * H, H);
       break;
     }
     case "pen": {
@@ -162,7 +162,7 @@ function drawAnnotation(
       }
       if (ann.note) {
         const last = pts[pts.length - 1];
-        caption(ctx, ann.note, last[0] * W, last[1] * H, px);
+        caption(ctx, ann.note, last[0] * W, last[1] * H, H);
       }
       break;
     }
@@ -184,7 +184,7 @@ function drawAnnotation(
       ctx.fillText(ann.label, cx, cy);
       ctx.textAlign = "start";
       ctx.textBaseline = "alphabetic";
-      if (ann.note) caption(ctx, `${ann.label}. ${ann.note}`, cx + r, cy - r, px);
+      if (ann.note) caption(ctx, `${ann.label}. ${ann.note}`, cx + r, cy - r, H);
       break;
     }
     case "redact": {
@@ -299,11 +299,15 @@ function pixelate(
   ctx.restore();
 }
 
-/** A short truncated caption rendered in a pill, anchored above-left of (x,y). */
-function caption(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, px: number): void {
+/**
+ * A short truncated caption rendered in a pill, anchored above-left of (x,y).
+ * Font is sized off the render height (not source pixels) so it stays legible on
+ * both the on-screen preview and the full-resolution flattened export.
+ */
+function caption(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, renderH: number): void {
   const max = 48;
   const label = text.length > max ? `${text.slice(0, max - 1)}…` : text;
-  const fontPx = Math.max(11, Math.round(13 * px));
+  const fontPx = Math.round(Math.min(28, Math.max(13, renderH * 0.018)));
   ctx.save();
   ctx.font = `${fontPx}px sans-serif`;
   const padding = Math.round(fontPx * 0.4);
@@ -320,4 +324,64 @@ function caption(ctx: CanvasRenderingContext2D, text: string, x: number, y: numb
   ctx.textBaseline = "middle";
   ctx.fillText(label, bx + padding, by + h / 2);
   ctx.restore();
+}
+
+// --- Hit testing (for right-click delete) ---
+
+/** Return the id of the topmost annotation under normalized point (x,y), or null. */
+export function hitTest(
+  annotations: readonly Annotation[],
+  x: number,
+  y: number,
+  view: CanvasView,
+): string | null {
+  const markerR = view.markerRadius / view.naturalW; // approx normalized radius
+  const lineTol = 0.012;
+  for (let i = annotations.length - 1; i >= 0; i--) {
+    if (contains(annotations[i], x, y, markerR, lineTol)) return annotations[i].id;
+  }
+  return null;
+}
+
+function contains(ann: Annotation, x: number, y: number, markerR: number, lineTol: number): boolean {
+  switch (ann.type) {
+    case "rect":
+    case "redact": {
+      const g = ann.geometry;
+      return x >= g.x && x <= g.x + g.w && y >= g.y && y <= g.y + g.h;
+    }
+    case "ellipse": {
+      const g = ann.geometry;
+      const rx = g.w / 2;
+      const ry = g.h / 2;
+      if (rx === 0 || ry === 0) return false;
+      const dx = (x - (g.x + rx)) / rx;
+      const dy = (y - (g.y + ry)) / ry;
+      return dx * dx + dy * dy <= 1;
+    }
+    case "arrow": {
+      const g = ann.geometry;
+      return distToSegment(x, y, g.x1, g.y1, g.x2, g.y2) <= lineTol;
+    }
+    case "pen": {
+      const pts = ann.geometry.points;
+      for (let i = 1; i < pts.length; i++) {
+        if (distToSegment(x, y, pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]) <= lineTol) return true;
+      }
+      return false;
+    }
+    case "marker": {
+      const dx = x - ann.geometry.x;
+      const dy = y - ann.geometry.y;
+      return Math.hypot(dx, dy) <= markerR;
+    }
+  }
+}
+
+function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  const t = lenSq === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }

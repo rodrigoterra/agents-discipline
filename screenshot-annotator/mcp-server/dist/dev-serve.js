@@ -4224,7 +4224,11 @@ async function handle(req, res, opts, resolveDone) {
     return sendFile(res, resolve(WEBAPP_DIR, "styles.css"), "text/css; charset=utf-8");
   }
   if (req.method === "GET" && path === "/meta") {
-    const meta = { hasImage: Boolean(opts.imagePath), source: opts.imagePath ? basename(opts.imagePath) : void 0 };
+    const meta = {
+      hasImage: Boolean(opts.imagePath),
+      source: opts.imagePath ? basename(opts.imagePath) : void 0,
+      mode: opts.mode ?? "mcp"
+    };
     return sendJson(res, 200, meta);
   }
   if (req.method === "GET" && path === "/image") {
@@ -4326,7 +4330,7 @@ if (imagePath && !existsSync(imagePath)) {
   console.error("Pass a path to an existing image, or run with no argument to use the in-page file picker.");
   process.exit(1);
 }
-var session = await startUiServer({ imagePath });
+var session = await startUiServer({ imagePath, mode: "dev" });
 console.log(`Annotation UI: ${session.url}`);
 if (!imagePath) console.log("(no image given \u2014 the canvas will show a file picker)");
 openBrowser(session.url);

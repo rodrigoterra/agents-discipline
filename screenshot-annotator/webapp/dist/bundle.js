@@ -90,7 +90,7 @@
         const { x, y, w, h } = ann.geometry;
         fillShape(ctx, ann, stroke, px, () => ctx.rect(x * W, y * H, w * W, h * H));
         ctx.strokeRect(x * W, y * H, w * W, h * H);
-        if (ann.note) caption(ctx, ann.note, x * W, y * H, px);
+        if (ann.note) caption(ctx, ann.note, x * W, y * H, H);
         break;
       }
       case "ellipse": {
@@ -101,13 +101,13 @@
         ctx.beginPath();
         ctx.ellipse(cx, cy, w / 2 * W, h / 2 * H, 0, 0, Math.PI * 2);
         ctx.stroke();
-        if (ann.note) caption(ctx, ann.note, x * W, y * H, px);
+        if (ann.note) caption(ctx, ann.note, x * W, y * H, H);
         break;
       }
       case "arrow": {
         const { x1, y1, x2, y2 } = ann.geometry;
         drawArrow(ctx, x1 * W, y1 * H, x2 * W, y2 * H, lineWidth);
-        if (ann.note) caption(ctx, ann.note, (x1 + x2) / 2 * W, (y1 + y2) / 2 * H, px);
+        if (ann.note) caption(ctx, ann.note, (x1 + x2) / 2 * W, (y1 + y2) / 2 * H, H);
         break;
       }
       case "pen": {
@@ -123,7 +123,7 @@
         }
         if (ann.note) {
           const last = pts[pts.length - 1];
-          caption(ctx, ann.note, last[0] * W, last[1] * H, px);
+          caption(ctx, ann.note, last[0] * W, last[1] * H, H);
         }
         break;
       }
@@ -145,7 +145,7 @@
         ctx.fillText(ann.label, cx, cy);
         ctx.textAlign = "start";
         ctx.textBaseline = "alphabetic";
-        if (ann.note) caption(ctx, `${ann.label}. ${ann.note}`, cx + r, cy - r, px);
+        if (ann.note) caption(ctx, `${ann.label}. ${ann.note}`, cx + r, cy - r, H);
         break;
       }
       case "redact": {
@@ -235,10 +235,10 @@
     ctx.drawImage(tmp, 0, 0, tmp.width, tmp.height, nx * W, ny * H, nw * W, nh * H);
     ctx.restore();
   }
-  function caption(ctx, text, x, y, px) {
+  function caption(ctx, text, x, y, renderH) {
     const max = 48;
     const label = text.length > max ? `${text.slice(0, max - 1)}\u2026` : text;
-    const fontPx = Math.max(11, Math.round(13 * px));
+    const fontPx = Math.round(Math.min(28, Math.max(13, renderH * 0.018)));
     ctx.save();
     ctx.font = `${fontPx}px sans-serif`;
     const padding = Math.round(fontPx * 0.4);
@@ -255,6 +255,55 @@
     ctx.textBaseline = "middle";
     ctx.fillText(label, bx + padding, by + h / 2);
     ctx.restore();
+  }
+  function hitTest(annotations, x, y, view2) {
+    const markerR = view2.markerRadius / view2.naturalW;
+    const lineTol = 0.012;
+    for (let i = annotations.length - 1; i >= 0; i--) {
+      if (contains(annotations[i], x, y, markerR, lineTol)) return annotations[i].id;
+    }
+    return null;
+  }
+  function contains(ann, x, y, markerR, lineTol) {
+    switch (ann.type) {
+      case "rect":
+      case "redact": {
+        const g = ann.geometry;
+        return x >= g.x && x <= g.x + g.w && y >= g.y && y <= g.y + g.h;
+      }
+      case "ellipse": {
+        const g = ann.geometry;
+        const rx = g.w / 2;
+        const ry = g.h / 2;
+        if (rx === 0 || ry === 0) return false;
+        const dx = (x - (g.x + rx)) / rx;
+        const dy = (y - (g.y + ry)) / ry;
+        return dx * dx + dy * dy <= 1;
+      }
+      case "arrow": {
+        const g = ann.geometry;
+        return distToSegment(x, y, g.x1, g.y1, g.x2, g.y2) <= lineTol;
+      }
+      case "pen": {
+        const pts = ann.geometry.points;
+        for (let i = 1; i < pts.length; i++) {
+          if (distToSegment(x, y, pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]) <= lineTol) return true;
+        }
+        return false;
+      }
+      case "marker": {
+        const dx = x - ann.geometry.x;
+        const dy = y - ann.geometry.y;
+        return Math.hypot(dx, dy) <= markerR;
+      }
+    }
+  }
+  function distToSegment(px, py, ax, ay, bx, by) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    const t = lenSq === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+    return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
   }
 
   // webapp/src/state.ts
@@ -502,6 +551,15 @@
   var view = null;
   var source;
   var finished = false;
+  var mode = "mcp";
+  var TOOL_KEYS = {
+    r: "rect",
+    e: "ellipse",
+    a: "arrow",
+    p: "pen",
+    m: "marker",
+    x: "redact"
+  };
   var $ = (sel) => {
     const el = document.querySelector(sel);
     if (!el) throw new Error(`missing element: ${sel}`);
@@ -510,9 +568,14 @@
   function setStatus(msg) {
     $("#status").textContent = msg;
   }
+  function isTyping() {
+    const el = document.activeElement;
+    return Boolean(document.querySelector(".note-overlay")) || el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement || el instanceof HTMLSelectElement;
+  }
   async function main() {
     const meta = await fetch("/meta").then((r) => r.json()).catch(() => ({ hasImage: false }));
     source = meta.source;
+    if (meta.mode === "dev") mode = "dev";
     if (meta.hasImage) {
       try {
         await loadImage("/image?t=" + Date.now());
@@ -526,7 +589,7 @@
     wireToolbar();
     wireCanvas();
     selectTool("rect");
-    setStatus("Pick a tool and start annotating.");
+    setStatus("Shortcuts: R rect \xB7 E ellipse \xB7 A arrow \xB7 P pen \xB7 M marker \xB7 X redact. Right-click a mark to delete it.");
   }
   function loadImage(src) {
     return new Promise((resolve, reject) => {
@@ -617,6 +680,8 @@
         e.preventDefault();
         store.redo();
         render();
+      } else if (!e.metaKey && !e.ctrlKey && !e.altKey && !isTyping() && TOOL_KEYS[e.key.toLowerCase()]) {
+        selectTool(TOOL_KEYS[e.key.toLowerCase()]);
       }
     });
     window.addEventListener("resize", relayout);
@@ -646,6 +711,17 @@
       drag = null;
       await commit(d, e.clientX, e.clientY);
       render();
+    });
+    canvas.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      if (finished || !view) return;
+      const p = view.normalize(e);
+      const id = hitTest(store.list(), p.x, p.y, view);
+      if (id) {
+        store.remove(id);
+        render();
+        setStatus("Deleted 1 annotation. (Right-click a mark to delete it.)");
+      }
     });
   }
   function draftFrom(drag) {
@@ -703,7 +779,8 @@
       finished = true;
       $("#done").setAttribute("disabled", "true");
       document.body.classList.add("finished");
-      setStatus(`Sent ${annotations.length} annotation(s) to Claude. You can close this tab.`);
+      const dest = mode === "dev" ? "saved to disk" : "sent to Claude";
+      setStatus(`${annotations.length} annotation(s) ${dest}. You can close this tab.`);
     } catch (err) {
       setStatus(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
     }

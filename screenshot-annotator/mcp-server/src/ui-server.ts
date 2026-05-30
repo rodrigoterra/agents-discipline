@@ -35,6 +35,8 @@ export interface UiServerOptions {
   imagePath?: string;
   /** Milliseconds to wait for the user before giving up. */
   timeoutMs?: number;
+  /** Who launched the UI — controls the "Done" wording shown to the user. */
+  mode?: "mcp" | "dev";
 }
 
 export function startUiServer(opts: UiServerOptions): Promise<UiSession> {
@@ -94,7 +96,11 @@ async function handle(
     return sendFile(res, resolve(WEBAPP_DIR, "styles.css"), "text/css; charset=utf-8");
   }
   if (req.method === "GET" && path === "/meta") {
-    const meta = { hasImage: Boolean(opts.imagePath), source: opts.imagePath ? basename(opts.imagePath) : undefined };
+    const meta = {
+      hasImage: Boolean(opts.imagePath),
+      source: opts.imagePath ? basename(opts.imagePath) : undefined,
+      mode: opts.mode ?? "mcp",
+    };
     return sendJson(res, 200, meta);
   }
   if (req.method === "GET" && path === "/image") {

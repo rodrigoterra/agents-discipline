@@ -90,6 +90,19 @@ test("draw in the real canvas and ingest image + JSON", async () => {
     await page.locator(".note-box textarea").fill("check this control");
     await page.locator(".note-box button.primary").click();
 
+    // 3) Right-click delete: draw a throwaway ellipse (via keyboard shortcut) then remove it.
+    await page.keyboard.press("e");
+    let r1 = at(0.1, 0.7);
+    let r2 = at(0.25, 0.85);
+    await page.mouse.move(r1.x, r1.y);
+    await page.mouse.down();
+    await page.mouse.move(r2.x, r2.y, { steps: 6 });
+    await page.mouse.up();
+    await page.locator(".note-box button").nth(1).click(); // Skip the note
+    const center = at(0.175, 0.775);
+    await page.mouse.click(center.x, center.y, { button: "right" });
+    await page.waitForFunction(() => document.querySelector("#status")?.textContent?.includes("Deleted"));
+
     // Finish.
     await page.locator("#done").click();
     await page.waitForFunction(() => document.body.classList.contains("finished"));

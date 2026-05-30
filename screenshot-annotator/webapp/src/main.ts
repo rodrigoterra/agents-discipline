@@ -2,7 +2,7 @@
 // pointer interactions, opens the note popup after each mark, and ships the
 // result on "Done".
 import type { Annotation, Semantic, ToolType } from "../../shared/annotation-schema";
-import { CanvasView, type Draft } from "./canvas";
+import { CanvasView, hitTest, type Draft } from "./canvas";
 import { AnnotationStore, nextId, type ToolbarState } from "./state";
 import { TOOLS, penTool, redactTool, type Pt, type ToolDrag } from "./tools";
 import { openNotePopup } from "./text-popup";
@@ -13,6 +13,18 @@ const toolbar: ToolbarState = { tool: "rect", stroke: "#e11d48", fill: "none", s
 let view: CanvasView | null = null;
 let source: string | undefined;
 let finished = false;
+/** "mcp" when launched by Claude's tool, "dev" via the standalone launcher. */
+let mode: "mcp" | "dev" = "mcp";
+
+/** Single-key shortcuts for tool selection. */
+const TOOL_KEYS: Record<string, ToolType> = {
+  r: "rect",
+  e: "ellipse",
+  a: "arrow",
+  p: "pen",
+  m: "marker",
+  x: "redact",
+};
 
 const $ = <T extends HTMLElement>(sel: string): T => {
   const el = document.querySelector<T>(sel);
@@ -24,11 +36,23 @@ function setStatus(msg: string): void {
   $("#status").textContent = msg;
 }
 
+/** True when focus is in a text field or the note popup is open. */
+function isTyping(): boolean {
+  const el = document.activeElement;
+  return (
+    Boolean(document.querySelector(".note-overlay")) ||
+    el instanceof HTMLTextAreaElement ||
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLSelectElement
+  );
+}
+
 async function main(): Promise<void> {
   const meta = await fetch("/meta")
     .then((r) => r.json())
     .catch(() => ({ hasImage: false }));
   source = meta.source;
+  if (meta.mode === "dev") mode = "dev";
 
   if (meta.hasImage) {
     try {
@@ -45,7 +69,7 @@ async function main(): Promise<void> {
   wireToolbar();
   wireCanvas();
   selectTool("rect");
-  setStatus("Pick a tool and start annotating.");
+  setStatus("Shortcuts: R rect · E ellipse · A arrow · P pen · M marker · X redact. Right-click a mark to delete it.");
 }
 
 function loadImage(src: string): Promise<void> {
@@ -153,6 +177,9 @@ function wireToolbar(): void {
       e.preventDefault();
       store.redo();
       render();
+    } else if (!e.metaKey && !e.ctrlKey && !e.altKey && !isTyping() && TOOL_KEYS[e.key.toLowerCase()]) {
+      // Single-key tool shortcuts (only when not typing in a field).
+      selectTool(TOOL_KEYS[e.key.toLowerCase()]);
     }
   });
   window.addEventListener("resize", relayout);
@@ -189,6 +216,19 @@ function wireCanvas(): void {
     drag = null;
     await commit(d, e.clientX, e.clientY);
     render();
+  });
+
+  // Right-click deletes the topmost annotation under the cursor.
+  canvas.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    if (finished || !view) return;
+    const p = view.normalize(e);
+    const id = hitTest(store.list(), p.x, p.y, view);
+    if (id) {
+      store.remove(id);
+      render();
+      setStatus("Deleted 1 annotation. (Right-click a mark to delete it.)");
+    }
   });
 }
 
@@ -252,7 +292,8 @@ async function finish(): Promise<void> {
     finished = true;
     $("#done").setAttribute("disabled", "true");
     document.body.classList.add("finished");
-    setStatus(`Sent ${annotations.length} annotation(s) to Claude. You can close this tab.`);
+    const dest = mode === "dev" ? "saved to disk" : "sent to Claude";
+    setStatus(`${annotations.length} annotation(s) ${dest}. You can close this tab.`);
   } catch (err) {
     setStatus(`Failed to save: ${err instanceof Error ? err.message : String(err)}`);
   }

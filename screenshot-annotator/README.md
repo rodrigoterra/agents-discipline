@@ -26,6 +26,9 @@ markers, and redaction boxes, each with an optional text note — then hand the 
 Each mark is tagged with a **semantic** (`block`, `eliminate`, `highlight`, `note`, `step`,
 `redact`) so the model reads intent without re-interpreting pixels.
 
+**Editing:** `Ctrl/Cmd+Z` / `Shift+Z` undo/redo, **right-click a mark to delete it**, and
+single-key tool shortcuts — `R` rect, `E` ellipse, `A` arrow, `P` pen, `M` marker, `X` redact.
+
 ## Why a JSON sidecar?
 
 The flattened PNG lets the VLM *see* the marks; the JSON gives **exact intent, normalized

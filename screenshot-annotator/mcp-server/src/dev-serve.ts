@@ -19,7 +19,7 @@ if (imagePath && !existsSync(imagePath)) {
   process.exit(1);
 }
 
-const session = await startUiServer({ imagePath });
+const session = await startUiServer({ imagePath, mode: "dev" });
 console.log(`Annotation UI: ${session.url}`);
 if (!imagePath) console.log("(no image given — the canvas will show a file picker)");
 openBrowser(session.url);
