@@ -51,30 +51,40 @@ normalized to `0..1` of the source image, so the document is resolution-independ
 }
 ```
 
-## Install (development)
+## Install
 
-```bash
-cd screenshot-annotator
-npm install
-npm run build         # bundles mcp-server/dist/index.js and webapp/dist/bundle.js
+**Prerequisite:** Node.js must be on your `PATH` (the MCP server runs as a small `node`
+process). Check with `node --version`. Claude Code CLI users already have it; on Claude Code
+Desktop, install Node from <https://nodejs.org> if `node` isn't found. If you use `nvm`, make a
+default active so GUI apps see it: `nvm alias default node`.
+
+### From the marketplace (recommended — persists across sessions)
+
+In any Claude Code session (CLI **or** Desktop), run:
+
+```
+/plugin marketplace add rodrigoterra/agents-discipline
+/plugin install screenshot-annotator@agents-discipline
 ```
 
-Load the plugin into Claude Code:
-
-```bash
-claude --plugin-dir ./screenshot-annotator
-```
-
-Then invoke it:
+That's it — no `--plugin-dir`, no build step, no env vars. The plugin ships prebuilt bundles, so
+it works with only Node present. Then use it:
 
 ```
 /screenshot-annotator:annotate path/to/screenshot.png
 ```
 
-or just ask Claude to "annotate this screenshot" — it will call the `annotate_screenshot` tool.
+or just ask Claude to **"annotate this screenshot"** (attach or reference one) — it calls the
+`annotate_screenshot` tool, opens the canvas, and reads your marks + notes back into context.
 
-For marketplace distribution, this plugin is registered in the repo's
-`.claude-plugin/marketplace.json`; install with `/plugin install screenshot-annotator@<marketplace>`.
+### From source (development)
+
+```bash
+cd screenshot-annotator
+npm install
+npm run build                       # bundles mcp-server/dist/* and webapp/dist/bundle.js
+claude --plugin-dir ./screenshot-annotator
+```
 
 ## Architecture
 
@@ -89,8 +99,9 @@ Bundles are committed under `dist/`, so the installed plugin needs only `node` a
 
 ### Notes
 
-- Large screenshots: the returned PNG is capped at 2400px on its longest side. If you still hit
-  the MCP output limit, raise `MAX_MCP_OUTPUT_TOKENS`.
+- Large screenshots: the returned PNG is capped at 2400px on its longest side, which keeps it
+  well under Claude Code's default MCP output limit — no `MAX_MCP_OUTPUT_TOKENS` tuning needed.
+  (Only raise it if you ever see a truncation warning on an unusually large image.)
 - Headless / remote sessions: if the browser can't be opened, the local UI URL is logged to the
   server's stderr — open it manually, or pass `openBrowser: false`.
 
