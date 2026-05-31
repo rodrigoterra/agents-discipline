@@ -1,0 +1,34 @@
+{
+  "manifest_version": "0.2",
+  "name": "screenshot-annotator",
+  "display_name": "Screenshot Annotator",
+  "version": "1.0.0",
+  "description": "Annotate screenshots in a local browser canvas (shapes, arrows, numbered markers, redaction boxes, per-mark notes), then return the flattened image plus a compact JSON sidecar.",
+  "long_description": "Opens an interactive browser canvas to mark up a screenshot, then hands the flattened annotated PNG plus a structured JSON description (geometry normalized 0..1, per-mark semantic intent and notes) back into the conversation. Redaction boxes destroy the underlying pixels.",
+  "author": {
+    "name": "rodrigoterra",
+    "url": "https://github.com/rodrigoterra"
+  },
+  "homepage": "https://github.com/rodrigoterra/agents-discipline",
+  "license": "MIT",
+  "keywords": ["screenshot", "annotation", "redaction", "markup", "mcp", "vision"],
+  "server": {
+    "type": "node",
+    "entry_point": "mcp-server/dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/mcp-server/dist/index.js"]
+    }
+  },
+  "tools": [
+    {
+      "name": "annotate_screenshot",
+      "description": "Open an interactive browser canvas to annotate a screenshot, then return the annotated image plus a compact JSON description."
+    }
+  ],
+  "compatibility": {
+    "runtimes": {
+      "node": ">=20.0.0"
+    }
+  }
+}
