@@ -24,8 +24,8 @@
     {
       "name": "screenshot-annotator",
       "source": "./screenshot-annotator",
-      "description": "Annotate screenshots with shapes, arrows, numbered markers, redaction boxes and per-mark text notes in a local browser canvas, then hand the flattened image plus a compact JSON sidecar straight back into Claude's context. Built on a portable TypeScript MCP server (reusable by Codex and other MCP clients).",
-      "version": "1.0.0",
+      "description": "Annotate screenshots with shapes, arrows, numbered markers, redaction boxes and per-mark text notes in a local browser canvas, then hand the flattened image plus a compact JSON sidecar straight back into Claude's context. Supply images by path, paste, drag-drop, or picker. Built on a portable TypeScript MCP server (reusable by Codex and other MCP clients).",
+      "version": "1.1.0",
       "category": "productivity",
       "keywords": [
         "screenshot",

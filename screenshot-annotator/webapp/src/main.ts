@@ -13,6 +13,8 @@ const toolbar: ToolbarState = { tool: "rect", stroke: "#e11d48", fill: "none", s
 let view: CanvasView | null = null;
 let source: string | undefined;
 let finished = false;
+/** Object URL of the image currently shown, so we can revoke it on replace. */
+let currentObjectUrl: string | null = null;
 /** "mcp" when launched by Claude's tool, "dev" via the standalone launcher. */
 let mode: "mcp" | "dev" = "mcp";
 
@@ -54,22 +56,31 @@ async function main(): Promise<void> {
   source = meta.source;
   if (meta.mode === "dev") mode = "dev";
 
+  wireToolbar();
+  wireCanvas();
+  wireImageSources();
+  selectTool("rect");
+
   if (meta.hasImage) {
     try {
       await loadImage("/image?t=" + Date.now());
+      setReadyStatus();
     } catch {
-      // The provided image couldn't be decoded — let the user pick one instead
+      // The provided image couldn't be decoded — let the user supply one instead
       // of leaving them staring at a blank canvas.
-      setStatus("Could not load the provided image — choose one to annotate.");
-      await pickFile();
+      setStatus("Could not load the provided image — paste, drop, or choose one to annotate.");
+      showPicker();
     }
   } else {
-    await pickFile();
+    showPicker();
   }
-  wireToolbar();
-  wireCanvas();
-  selectTool("rect");
-  setStatus("Shortcuts: R rect · E ellipse · A arrow · P pen · M marker · X redact. Right-click a mark to delete it.");
+}
+
+function setReadyStatus(): void {
+  setStatus(
+    "Shortcuts: R rect · E ellipse · A arrow · P pen · M marker · X redact. " +
+      "Right-click a mark to delete it. Paste, drop, or “Change image” to swap the image.",
+  );
 }
 
 function loadImage(src: string): Promise<void> {
@@ -85,20 +96,83 @@ function loadImage(src: string): Promise<void> {
   });
 }
 
-/** Fallback when the tool was launched without an image path. */
-function pickFile(): Promise<void> {
-  return new Promise((resolve) => {
-    const picker = $("#picker");
-    picker.style.display = "flex";
-    const input = $<HTMLInputElement>("#file");
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      source = file.name;
-      picker.style.display = "none";
-      await loadImage(URL.createObjectURL(file));
-      resolve();
-    };
+/** Show the picker overlay (no image yet, or an undecodable one). */
+function showPicker(): void {
+  $("#picker").style.display = "flex";
+}
+
+/**
+ * Load an image supplied locally — via the file picker, drag-drop, or clipboard
+ * paste. Revokes the previous object URL once the new image has decoded.
+ */
+async function loadFromBlob(blob: Blob, name: string): Promise<void> {
+  const url = URL.createObjectURL(blob);
+  try {
+    await loadImage(url);
+  } catch {
+    URL.revokeObjectURL(url);
+    setStatus(`Could not load “${name}” — try a different image.`);
+    return;
+  }
+  if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+  currentObjectUrl = url;
+  source = name;
+  $("#picker").style.display = "none";
+  store.clear();
+  render();
+  setReadyStatus();
+}
+
+/** Wire the three ways to supply/replace an image: picker, paste, drag-drop. */
+function wireImageSources(): void {
+  const fileInput = $<HTMLInputElement>("#file");
+  fileInput.onchange = async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    await loadFromBlob(file, file.name);
+    fileInput.value = ""; // allow re-picking the same file name later
+  };
+
+  // Always-available toolbar button → opens the native file chooser.
+  $("#change-image").onclick = () => fileInput.click();
+
+  // Clipboard paste anywhere in the window (ignored while typing a note).
+  window.addEventListener("paste", async (e) => {
+    if (finished || isTyping()) return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of Array.from(items)) {
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          await loadFromBlob(file, file.name || "pasted-image.png");
+        }
+        return;
+      }
+    }
+  });
+
+  // Drag & drop an image file onto the stage.
+  const stage = $("#stage");
+  const halt = (e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  stage.addEventListener("dragover", (e) => {
+    halt(e);
+    if (!finished) stage.classList.add("drag-over");
+  });
+  stage.addEventListener("dragleave", (e) => {
+    halt(e);
+    stage.classList.remove("drag-over");
+  });
+  stage.addEventListener("drop", async (e) => {
+    halt(e);
+    stage.classList.remove("drag-over");
+    if (finished) return;
+    const file = Array.from(e.dataTransfer?.files ?? []).find((f) => f.type.startsWith("image/"));
+    if (file) await loadFromBlob(file, file.name);
   });
 }
 

@@ -128,6 +128,22 @@ body.finished #canvas {
   opacity: 0.85;
 }
 
+/* Drop-zone affordance while dragging an image file over the stage. */
+#stage.drag-over::after {
+  content: "Drop image to load";
+  position: absolute;
+  inset: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--accent);
+  border-radius: 10px;
+  background: rgba(225, 29, 72, 0.08);
+  color: var(--text);
+  font-size: 18px;
+  pointer-events: none;
+}
+
 #picker {
   position: absolute;
   inset: 0;

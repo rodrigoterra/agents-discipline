@@ -44,6 +44,10 @@
         <label><input type="checkbox" id="redact-pixelate" /> pixelate</label>
       </div>
 
+      <div class="group">
+        <button id="change-image" title="Load or replace the image — or paste (Ctrl/Cmd+V) or drop a file">🖼 Change image</button>
+      </div>
+
       <div class="group push">
         <button id="undo" title="Undo (Ctrl/Cmd+Z)" disabled>↶ Undo</button>
         <button id="redo" title="Redo (Ctrl/Cmd+Shift+Z)" disabled>↷ Redo</button>
@@ -56,7 +60,7 @@
       <canvas id="canvas"></canvas>
       <div id="picker" style="display: none">
         <div class="picker-box">
-          <p>No screenshot was provided. Choose an image to annotate:</p>
+          <p>No screenshot was provided. Choose, paste (Ctrl/Cmd+V), or drop an image to annotate:</p>
           <input type="file" id="file" accept="image/*" />
         </div>
       </div>

@@ -17,7 +17,8 @@ Use this when the user wants to mark up, comment on, or redact a screenshot/imag
 Tools available in the canvas: outlined or diagonally-striped rectangles & ellipses
 (for blocking/eliminating regions), straight arrows, freehand pen, auto-numbered
 markers, and redaction boxes that destroy the underlying pixels. Each non-redaction
-mark can carry a short text note.
+mark can carry a short text note. If no imagePath is given the canvas opens empty
+and the user can paste, drop, or pick an image; a loaded image can also be replaced.
 
 The call blocks until the user clicks "Done" in the browser. It returns (1) the
 flattened annotated PNG and (2) a JSON document whose geometry is normalized to
@@ -39,7 +40,9 @@ export function registerAnnotateTool(server: McpServer): void {
         imagePath: z
           .string()
           .optional()
-          .describe("Absolute or cwd-relative path to the screenshot. If omitted, the canvas shows a file picker."),
+          .describe(
+            "Absolute or cwd-relative path to the screenshot. If omitted, the canvas opens empty so the user can paste, drop, or pick an image. A loaded image can also be replaced from the canvas.",
+          ),
         openBrowser: z
           .boolean()
           .optional()

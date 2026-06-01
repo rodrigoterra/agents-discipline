@@ -551,6 +551,7 @@
   var view = null;
   var source;
   var finished = false;
+  var currentObjectUrl = null;
   var mode = "mcp";
   var TOOL_KEYS = {
     r: "rect",
@@ -576,20 +577,26 @@
     const meta = await fetch("/meta").then((r) => r.json()).catch(() => ({ hasImage: false }));
     source = meta.source;
     if (meta.mode === "dev") mode = "dev";
+    wireToolbar();
+    wireCanvas();
+    wireImageSources();
+    selectTool("rect");
     if (meta.hasImage) {
       try {
         await loadImage("/image?t=" + Date.now());
+        setReadyStatus();
       } catch {
-        setStatus("Could not load the provided image \u2014 choose one to annotate.");
-        await pickFile();
+        setStatus("Could not load the provided image \u2014 paste, drop, or choose one to annotate.");
+        showPicker();
       }
     } else {
-      await pickFile();
+      showPicker();
     }
-    wireToolbar();
-    wireCanvas();
-    selectTool("rect");
-    setStatus("Shortcuts: R rect \xB7 E ellipse \xB7 A arrow \xB7 P pen \xB7 M marker \xB7 X redact. Right-click a mark to delete it.");
+  }
+  function setReadyStatus() {
+    setStatus(
+      "Shortcuts: R rect \xB7 E ellipse \xB7 A arrow \xB7 P pen \xB7 M marker \xB7 X redact. Right-click a mark to delete it. Paste, drop, or \u201CChange image\u201D to swap the image."
+    );
   }
   function loadImage(src) {
     return new Promise((resolve, reject) => {
@@ -603,19 +610,69 @@
       img.src = src;
     });
   }
-  function pickFile() {
-    return new Promise((resolve) => {
-      const picker = $("#picker");
-      picker.style.display = "flex";
-      const input = $("#file");
-      input.onchange = async () => {
-        const file = input.files?.[0];
-        if (!file) return;
-        source = file.name;
-        picker.style.display = "none";
-        await loadImage(URL.createObjectURL(file));
-        resolve();
-      };
+  function showPicker() {
+    $("#picker").style.display = "flex";
+  }
+  async function loadFromBlob(blob, name) {
+    const url = URL.createObjectURL(blob);
+    try {
+      await loadImage(url);
+    } catch {
+      URL.revokeObjectURL(url);
+      setStatus(`Could not load \u201C${name}\u201D \u2014 try a different image.`);
+      return;
+    }
+    if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+    currentObjectUrl = url;
+    source = name;
+    $("#picker").style.display = "none";
+    store.clear();
+    render();
+    setReadyStatus();
+  }
+  function wireImageSources() {
+    const fileInput = $("#file");
+    fileInput.onchange = async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      await loadFromBlob(file, file.name);
+      fileInput.value = "";
+    };
+    $("#change-image").onclick = () => fileInput.click();
+    window.addEventListener("paste", async (e) => {
+      if (finished || isTyping()) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of Array.from(items)) {
+        if (item.kind === "file" && item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            await loadFromBlob(file, file.name || "pasted-image.png");
+          }
+          return;
+        }
+      }
+    });
+    const stage = $("#stage");
+    const halt = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    stage.addEventListener("dragover", (e) => {
+      halt(e);
+      if (!finished) stage.classList.add("drag-over");
+    });
+    stage.addEventListener("dragleave", (e) => {
+      halt(e);
+      stage.classList.remove("drag-over");
+    });
+    stage.addEventListener("drop", async (e) => {
+      halt(e);
+      stage.classList.remove("drag-over");
+      if (finished) return;
+      const file = Array.from(e.dataTransfer?.files ?? []).find((f) => f.type.startsWith("image/"));
+      if (file) await loadFromBlob(file, file.name);
     });
   }
   function relayout() {

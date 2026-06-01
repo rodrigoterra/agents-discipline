@@ -16,7 +16,10 @@ then read the result back.
 1. Determine the image path:
    - If the user passed one as `$ARGUMENTS`, use it.
    - Otherwise, if a screenshot was just captured or referenced in the conversation, use that path.
-   - If no path is available, call the tool with no `imagePath` — the canvas shows a file picker.
+   - If no path is available, call the tool with no `imagePath` — the canvas opens empty and the
+     user can **paste** (Ctrl/Cmd+V), **drag-drop**, or **pick** an image. They can also replace a
+     loaded image at any time via the **"Change image"** button, paste, or drop (this clears existing
+     marks, since coordinates are image-relative).
 2. Call `annotate_screenshot({ imagePath })`. This **opens a browser window** with the
    annotation canvas and **blocks until the user clicks "Done"**, so do not call anything
    else meanwhile. (If the browser does not open — e.g. a remote/headless session — the
