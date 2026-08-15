@@ -243,6 +243,21 @@ Three conclusions:
 synthetic flat-color motion — the easiest possible case for palette quantization, and likely
 *unrepresentative* of text-heavy screen content.
 
+### That caveat, now quantified (rev 3)
+
+Once the encoder existed, both fixtures were measured. The gap is not a rounding error:
+
+| preset | synthetic | stress (text over gradients) | ratio | encode (stress) |
+|---|---|---|---|---|
+| small | 1.18 MB | **9.20 MB** | 7.8× | 8.7 s |
+| balanced | 4.76 MB | **37.77 MB** | 7.9× | 24.2 s |
+| sharp | 9.70 MB | **68.49 MB** | 7.1× | 39.6 s |
+
+The stress fixture is a deliberate worst case (continuous mandelbrot gradients under text);
+real screen content has large flat regions and should land between the columns. Two
+consequences: **a synthetic-only test suite cannot support any size claim**, and **the preset
+values are wrong for real content** — see the revised design decision below.
+
 **The architectural consequence:** if encode latency ever needs to drop materially, the fix is
 **encoding incrementally during recording**, not tuning the post-stop pipeline. Deferred, but
 this is the lever.
@@ -401,9 +416,17 @@ and rev 1's "correct corner radius" had no definable expected value.
 - *Why:* Only layer testable in this container; exactly what the MCP wrapper needs. One rule
   buys both.
 
-**Decision:** Presets, not a size-budget solver.
+**Decision:** Presets, not a size-budget solver. **⚠️ Under revision — see below.**
 - *Why:* A solver re-encodes to converge. At a measured ~10 s per encode, iterating would be
   catastrophic. Measurement turned this from a preference into a hard constraint.
+- *Rev 3 problem:* running the built encoder against realistic content shows fixed presets
+  produce **unusable output** — `balanced` emitted 37.8 MB and `sharp` 68.5 MB for 10 s at
+  720p on the stress fixture (~8× the synthetic fixture). A preset that can emit 38 MB fails
+  the product regardless of how fast it was chosen.
+- *Resolution (not yet designed):* a **single-pass size estimate** — predict output bytes from
+  frame count × area × a measured bytes-per-pixel-frame constant, and step fps/width down
+  *before* encoding. Keeps the one-shot property that killed the iterative solver while
+  refusing to emit a file nobody can post. Tracked as the top open question.
 
 **Decision:** PNG temp directory, not a y4m stdin pipe.
 - *Alternatives:* pipe ffmpeg → gifski (rev 1's design); build gifski with `--features video`.
