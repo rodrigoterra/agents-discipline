@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Pick a window</title>
+    <style>
+      html, body {
+        margin: 0; height: 100%; overflow: auto;
+        background: rgba(0, 0, 0, 0.55); color: #fff;
+        font: 13px -apple-system, "Segoe UI", system-ui, sans-serif;
+        user-select: none;
+      }
+      h1 { font-size: 15px; font-weight: 600; text-align: center; margin: 24px 0 4px; }
+      p.sub { text-align: center; opacity: 0.7; margin: 0 0 20px; }
+      #grid {
+        display: grid; gap: 14px; padding: 0 28px 28px;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      }
+      .card {
+        border: 2px solid transparent; border-radius: 8px; padding: 8px;
+        background: rgba(255, 255, 255, 0.08); cursor: pointer;
+      }
+      .card:hover { border-color: #fff; background: rgba(255, 255, 255, 0.16); }
+      .card img { width: 100%; height: 118px; object-fit: contain; display: block; }
+      .card span {
+        display: block; margin-top: 6px; font-size: 12px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Pick a window to record</h1>
+    <p class="sub">Only that window's content is captured — Esc to cancel</p>
+    <div id="grid"></div>
+    <script>
+      const grid = document.getElementById('grid');
+
+      window.gifomator.onSources((sources) => {
+        grid.innerHTML = '';
+        for (const source of sources) {
+          const card = document.createElement('div');
+          card.className = 'card';
+
+          const img = document.createElement('img');
+          img.src = source.thumbnail;
+
+          const name = document.createElement('span');
+          name.textContent = source.name;
+
+          card.append(img, name);
+          card.addEventListener('click', () => {
+            window.gifomator.pickWindow({ id: source.id, width: img.naturalWidth || 1280 });
+          });
+          grid.append(card);
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') window.gifomator.pickWindow(null);
+      });
+    </script>
+  </body>
+</html>

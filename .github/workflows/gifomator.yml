@@ -1,0 +1,72 @@
+name: Gifomator
+
+on:
+  push:
+    paths:
+      - 'gifomator/**'
+      - '.github/workflows/gifomator.yml'
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: gifomator
+
+jobs:
+  # The encoder is the only layer verifiable without a GUI, so it gets its own
+  # fast Linux job rather than waiting on the platform build matrix.
+  core:
+    name: core tests (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci || npm install
+      - run: npm run build
+      - run: npx eslint core app
+      - run: npx tsc --noEmit -p tsconfig.core.json
+      - name: Assert core/ has no Electron dependency
+        run: |
+          # The headless-test story depends on this entirely, so it is checked
+          # against a tree with Electron physically removed, not just by lint.
+          rm -rf node_modules/electron
+          node --test test/purity.test.mjs test/presets.test.mjs
+      - run: npm install
+      - run: node --test test/*.test.mjs
+
+  build:
+    name: build ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: dist:win
+            artifact: gifomator-windows
+          - os: macos-latest
+            script: dist:mac
+            artifact: gifomator-macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run build
+      - name: Package
+        # Unsigned by design for v1 (internal/dev only). Signing credentials must
+        # never enter a build log; adding them is a deliberate v2 decision.
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm run ${{ matrix.script }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            gifomator/release/*.exe
+            gifomator/release/*.zip
+            gifomator/release/*.dmg
+          if-no-files-found: error
+          retention-days: 14

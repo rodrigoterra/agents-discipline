@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Select region</title>
+    <style>
+      html, body {
+        margin: 0; padding: 0; width: 100%; height: 100%;
+        overflow: hidden; cursor: crosshair;
+        background: rgba(0, 0, 0, 0.28);
+        user-select: none;
+        font: 12px -apple-system, "Segoe UI", system-ui, sans-serif;
+      }
+      #box {
+        position: absolute; display: none;
+        border: 1px solid #fff;
+        background: rgba(255, 255, 255, 0.08);
+        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.28);
+      }
+      #dims {
+        position: absolute; display: none;
+        padding: 2px 6px; border-radius: 3px;
+        background: #000; color: #fff;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      #hint {
+        position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+        padding: 6px 12px; border-radius: 4px;
+        background: rgba(0, 0, 0, 0.7); color: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="hint">Drag to select a region — Esc to cancel</div>
+    <div id="box"></div>
+    <div id="dims"></div>
+    <script>
+      const box = document.getElementById('box');
+      const dims = document.getElementById('dims');
+      const hint = document.getElementById('hint');
+      let startX = 0, startY = 0, dragging = false;
+
+      function rect() {
+        const l = parseFloat(box.style.left) || 0;
+        const t = parseFloat(box.style.top) || 0;
+        return { x: l, y: t, width: box.offsetWidth, height: box.offsetHeight };
+      }
+
+      document.addEventListener('mousedown', (e) => {
+        dragging = true;
+        startX = e.clientX; startY = e.clientY;
+        hint.style.display = 'none';
+        box.style.display = 'block';
+        dims.style.display = 'block';
+        box.style.left = startX + 'px';
+        box.style.top = startY + 'px';
+        box.style.width = '0px';
+        box.style.height = '0px';
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const x = Math.min(e.clientX, startX);
+        const y = Math.min(e.clientY, startY);
+        const w = Math.abs(e.clientX - startX);
+        const h = Math.abs(e.clientY - startY);
+        box.style.left = x + 'px';
+        box.style.top = y + 'px';
+        box.style.width = w + 'px';
+        box.style.height = h + 'px';
+        dims.textContent = w + ' × ' + h;
+        dims.style.left = (x + 2) + 'px';
+        dims.style.top = Math.max(0, y - 20) + 'px';
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        window.gifomator.sendRegion(rect());
+      });
+
+      // Esc during selection cancels — it never destroys a completed recording.
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') window.gifomator.sendRegion(null);
+      });
+    </script>
+  </body>
+</html>

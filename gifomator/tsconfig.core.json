@@ -1,0 +1,16 @@
+{
+  "// purpose": "Type-checks core/ in isolation with Electron types absent.",
+  "// enforces": "specs/gifomator-phase1-core.md — the core/ purity requirement.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["core/**/*.ts"]
+}

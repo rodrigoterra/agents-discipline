@@ -1,0 +1,139 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Gifomator Settings</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0; padding: 22px 24px;
+        font: 13px -apple-system, "Segoe UI", system-ui, sans-serif;
+      }
+      h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;
+           opacity: 0.55; margin: 22px 0 8px; }
+      h2:first-of-type { margin-top: 0; }
+      .row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+      .row label { flex: 0 0 132px; }
+      input[type="text"] {
+        flex: 1; padding: 5px 8px; border-radius: 5px;
+        border: 1px solid rgba(128,128,128,0.45); background: transparent;
+        color: inherit; font: inherit; font-variant-numeric: tabular-nums;
+      }
+      button {
+        padding: 5px 12px; border-radius: 5px; font: inherit;
+        border: 1px solid rgba(128,128,128,0.45); background: transparent;
+        color: inherit; cursor: pointer;
+      }
+      button:hover { background: rgba(128,128,128,0.14); }
+      #folder { flex: 1; opacity: 0.75; overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; }
+      .warn { color: #e5484d; font-size: 12px; margin-top: 4px; min-height: 16px; }
+      .note { opacity: 0.6; font-size: 12px; line-height: 1.45; margin-top: 6px; }
+    </style>
+  </head>
+  <body>
+    <h2>Output</h2>
+    <div class="row">
+      <label>Folder</label>
+      <span id="folder">…</span>
+      <button id="choose">Change…</button>
+    </div>
+
+    <h2>Preset</h2>
+    <div class="row">
+      <label>Quality preset</label>
+      <select id="preset"></select>
+    </div>
+    <div class="note" id="presetNote"></div>
+
+    <h2>Hotkeys</h2>
+    <div class="row"><label>Capture region</label><input type="text" id="hk-region" /></div>
+    <div class="row"><label>Capture window</label><input type="text" id="hk-window" /></div>
+    <div class="row"><label>Capture screen</label><input type="text" id="hk-screen" /></div>
+    <div class="row"><label>Discard</label><input type="text" id="hk-discard" /></div>
+    <div class="warn" id="warn"></div>
+    <div class="note">
+      Stop a recording by pressing its capture hotkey again, or Esc.
+      Conflicts with other applications cannot be detected reliably — if a hotkey
+      does nothing, another app has likely claimed it.
+    </div>
+
+    <h2>Startup</h2>
+    <div class="row">
+      <label>Launch at login</label>
+      <input type="checkbox" id="launch" />
+    </div>
+
+    <script>
+      const fields = ['region', 'window', 'screen', 'discard'];
+      const warn = document.getElementById('warn');
+      let settings = null;
+      let presets = null;
+
+      function describePreset(name) {
+        const p = presets?.[name];
+        return p ? `${p.fps} fps · max ${p.maxWidth}px wide · quality ${p.quality}` : '';
+      }
+
+      async function load() {
+        settings = await window.gifomator.getSettings();
+        presets = await window.gifomator.getPresets();
+
+        document.getElementById('folder').textContent = settings.outputFolder;
+        document.getElementById('launch').checked = settings.launchAtLogin;
+
+        const select = document.getElementById('preset');
+        select.innerHTML = '';
+        for (const name of Object.keys(presets)) {
+          const option = document.createElement('option');
+          option.value = name;
+          option.textContent = name[0].toUpperCase() + name.slice(1);
+          option.selected = settings.preset === name;
+          select.append(option);
+        }
+        document.getElementById('presetNote').textContent = describePreset(settings.preset);
+
+        for (const f of fields) document.getElementById('hk-' + f).value = settings.hotkeys[f];
+      }
+
+      // Reject a binding already used by another Gifomator action. Collisions with
+      // other running apps are deliberately not claimed — see the note above.
+      function internalConflict(action, value) {
+        for (const f of fields) {
+          if (f !== action && settings.hotkeys[f].toLowerCase() === value.toLowerCase()) return f;
+        }
+        return null;
+      }
+
+      for (const f of fields) {
+        document.getElementById('hk-' + f).addEventListener('change', async (e) => {
+          const value = e.target.value.trim();
+          const clash = internalConflict(f, value);
+          if (clash) {
+            warn.textContent = `"${value}" is already bound to ${clash}.`;
+            e.target.value = settings.hotkeys[f];
+            return;
+          }
+          warn.textContent = '';
+          settings = await window.gifomator.setSettings({ hotkeys: { [f]: value } });
+        });
+      }
+
+      document.getElementById('preset').addEventListener('change', async (e) => {
+        settings = await window.gifomator.setSettings({ preset: e.target.value });
+        document.getElementById('presetNote').textContent = describePreset(e.target.value);
+      });
+
+      document.getElementById('launch').addEventListener('change', async (e) => {
+        settings = await window.gifomator.setSettings({ launchAtLogin: e.target.checked });
+      });
+
+      document.getElementById('choose').addEventListener('click', async () => {
+        const folder = await window.gifomator.chooseFolder();
+        if (folder) document.getElementById('folder').textContent = folder;
+      });
+
+      load();
+    </script>
+  </body>
+</html>

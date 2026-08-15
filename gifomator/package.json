@@ -1,0 +1,72 @@
+{
+  "name": "gifomator",
+  "version": "0.1.0",
+  "description": "Screen recording to GIF — tray-resident, hotkey-driven, silent save",
+  "private": true,
+  "type": "module",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "typecheck:core": "tsc --noEmit -p tsconfig.core.json",
+    "lint": "eslint core app",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "test:core": "node --test test/presets.test.mjs test/encode.test.mjs test/licence.test.mjs",
+    "fixtures": "node test/fixtures/make-fixtures.mjs",
+    "start": "electron .",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:win:cross": "npm install --force --no-save @ffmpeg-installer/win32-x64 && electron-builder --win zip --publish never -c.win.signAndEditExecutable=false"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "gifski": "^1.7.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@typescript-eslint/parser": "^8.67.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "esbuild": "^0.25.0",
+    "eslint": "^9.39.5",
+    "typescript": "^5.6.0"
+  },
+  "build": {
+    "appId": "io.arvore.gifomator",
+    "productName": "Gifomator",
+    "files": [
+      "dist/**/*",
+      "app/renderer/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/gifski/bin/**",
+      "node_modules/@ffmpeg-installer/**"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "artifactName": "Gifomator-${version}-win-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.utilities",
+      "artifactName": "Gifomator-${version}-mac-${arch}.${ext}",
+      "extendInfo": {
+        "NSScreenCaptureUsageDescription": "Gifomator records your screen to create GIFs."
+      }
+    },
+    "directories": {
+      "output": "release"
+    }
+  }
+}

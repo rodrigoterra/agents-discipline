@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Gifomator recorder</title>
+  </head>
+  <body>
+    <script>
+      // Hidden renderer: owns getUserMedia + MediaRecorder. Never visible.
+      let recorder = null;
+      let chunks = [];
+      let stream = null;
+      let currentWidth = 1280;
+      let discarded = false;
+
+      window.gifomator.onStart(async ({ sourceId, sourceWidth }) => {
+        currentWidth = sourceWidth;
+        discarded = false;
+        chunks = [];
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {
+              mandatory: {
+                chromeMediaSource: 'desktop',
+                chromeMediaSourceId: sourceId,
+                maxFrameRate: 30,
+              },
+            },
+          });
+        } catch (err) {
+          console.error('[gifomator] getUserMedia failed', err);
+          window.gifomator.sendData(new ArrayBuffer(0), currentWidth);
+          return;
+        }
+
+        recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+        recorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) chunks.push(e.data);
+        };
+        recorder.onstop = async () => {
+          stream.getTracks().forEach((t) => t.stop());
+          if (discarded) {
+            chunks = [];
+            return;
+          }
+          const blob = new Blob(chunks, { type: 'video/webm' });
+          const buffer = await blob.arrayBuffer();
+          window.gifomator.sendData(buffer, currentWidth);
+          chunks = [];
+        };
+        recorder.start(100);
+      });
+
+      window.gifomator.onStop(() => {
+        if (recorder && recorder.state !== 'inactive') recorder.stop();
+      });
+
+      window.gifomator.onDiscard(() => {
+        discarded = true;
+        if (recorder && recorder.state !== 'inactive') recorder.stop();
+      });
+    </script>
+  </body>
+</html>
