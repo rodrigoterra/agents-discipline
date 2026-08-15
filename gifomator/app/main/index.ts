@@ -47,6 +47,14 @@ let settingsWindow: BrowserWindow | null = null;
 let state: AppState = 'idle';
 let pendingCrop: CropRect | undefined;
 let encodeAbort: AbortController | null = null;
+/**
+ * The display the selection overlay was opened on.
+ *
+ * Captured at open time rather than re-resolved when the selection comes back: on a
+ * multi-monitor setup the cursor can leave the overlay's display between opening and
+ * confirming, and re-resolving would crop from the wrong screen at the wrong scale.
+ */
+let overlayDisplay: Electron.Display | null = null;
 
 function setState(next: AppState): void {
   state = next;
@@ -208,6 +216,7 @@ function discard(): void {
 function openOverlay(kind: 'region' | 'picker' = 'region', payload?: unknown): void {
   closeOverlay();
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  overlayDisplay = display;
 
   overlay = new BrowserWindow({
     ...display.bounds,
@@ -239,6 +248,7 @@ function openOverlay(kind: 'region' | 'picker' = 'region', payload?: unknown): v
 function closeOverlay(): void {
   if (overlay && !overlay.isDestroyed()) overlay.close();
   overlay = null;
+  overlayDisplay = null;
 }
 
 function openSettings(): void {
@@ -263,12 +273,14 @@ function openSettings(): void {
 function registerIpc(): void {
   // Region overlay finished: either a rectangle, or a cancel.
   ipcMain.on('overlay:region', async (_e, rect: CropRect | null) => {
+    const display = overlayDisplay ?? screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
     closeOverlay();
     if (!rect || rect.width < 8 || rect.height < 8) {
       setState('idle');
       return;
     }
-    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    // Overlay coordinates are display-relative because the overlay covers exactly one
+    // display; scaleFactor converts them to the captured stream's physical pixels.
     const scale = display.scaleFactor;
     pendingCrop = {
       x: rect.x * scale,
