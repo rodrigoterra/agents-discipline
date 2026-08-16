@@ -77,17 +77,38 @@ jobs:
           retention-days: 14
 
       # Actions artifacts require a signed-in GitHub session to download, which makes
-      # them useless for handing a build to someone on a phone or a different account.
-      # Release assets are plain public URLs. Uses the preinstalled gh CLI rather than
-      # a third-party action.
+      # them useless for handing a build to someone on a phone, in Slack, or on another
+      # account. Release assets are plain public URLs.
+      #
+      # Runs on a tag push or a manual dispatch. `gh release create` creates the tag
+      # itself, so no separate tag push is needed. Uses the preinstalled gh CLI rather
+      # than a third-party action.
       - name: Attach build to release
-        if: startsWith(github.ref, 'refs/tags/gifomator-v')
+        if: startsWith(github.ref, 'refs/tags/gifomator-v') || github.event_name == 'workflow_dispatch'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "Gifomator ${{ github.ref_name }}" \
-            --notes "Unsigned development build. Windows: SmartScreen will warn — More info → Run anyway. macOS: right-click → Open. See gifomator/REVIEW-WINDOWS.md." \
-            --draft=false || true
-          gh release upload "${{ github.ref_name }}" gifomator/release/*.zip --clobber
+          set -eu
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION=$(node -p "require('./package.json').version")
+            TAG="gifomator-v${VERSION}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
+          echo "releasing as $TAG"
+
+          # Both matrix legs race to create the release; whichever loses just uploads.
+          gh release create "$TAG" \
+            --target "${{ github.sha }}" \
+            --title "Gifomator $TAG" \
+            --notes "Unsigned development build — internal/dev only.
+
+          **Windows:** download the \`-win-\` zip, unzip, run \`Gifomator.exe\`. SmartScreen will warn (unsigned by design) — More info → Run anyway. The app has **no window**; it lives in the system tray.
+
+          **macOS:** download the \`-mac-\` zip, unzip, right-click → Open. Screen Recording permission is required.
+
+          Review checklist: \`gifomator/REVIEW-WINDOWS.md\`." \
+            || echo "release already exists, uploading to it"
+
+          gh release upload "$TAG" gifomator/release/*.zip --clobber
