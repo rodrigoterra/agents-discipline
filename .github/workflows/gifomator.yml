@@ -111,4 +111,6 @@ jobs:
           Review checklist: \`gifomator/REVIEW-WINDOWS.md\`." \
             || echo "release already exists, uploading to it"
 
-          gh release upload "$TAG" gifomator/release/*.zip --clobber
+          # Path is relative to gifomator/ — defaults.run.working-directory applies to
+          # `run:` steps (unlike actions/upload-artifact, whose paths are workspace-relative).
+          gh release upload "$TAG" release/*.zip --clobber
