@@ -43,10 +43,24 @@
     </div>
     <script>
       const label = document.getElementById('label');
-      window.gifomator.onIndicatorState((state) => {
+
+      // Accelerator strings are Electron's ("CommandOrControl+Shift+S"); shorten them
+      // to what the keycaps actually say so the badge stays narrow.
+      function pretty(accel) {
+        if (!accel) return '';
+        const mac = navigator.platform.toLowerCase().includes('mac');
+        return accel
+          .replace(/CommandOrControl|Command|Cmd/gi, mac ? '⌘' : 'Ctrl')
+          .replace(/Control|Ctrl/gi, mac ? '⌃' : 'Ctrl')
+          .replace(/Shift/gi, mac ? '⇧' : 'Shift')
+          .replace(/Alt|Option/gi, mac ? '⌥' : 'Alt')
+          .replace(/\+/g, mac ? '' : '+');
+      }
+
+      window.gifomator.onIndicatorState((state, stopKey) => {
         document.body.className = state;
         label.textContent =
-          state === 'recording' ? 'Recording…'
+          state === 'recording' ? `Recording — ${pretty(stopKey)} to stop`
           : state === 'encoding' ? 'Encoding…'
           : state === 'selecting' ? 'Select an area'
           : 'Gifomator';

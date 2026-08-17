@@ -7,12 +7,14 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import path from 'node:path';
 import {
   encode,
   readGifInfo,
   probeBinaries,
+  clearBinaryCache,
   PRESETS,
   outputWidth,
   evenHeight,
@@ -118,6 +120,56 @@ test('falls back to ffmpeg when gifski is unavailable', async () => {
   });
   assert.equal(result.backendUsed, 'ffmpeg');
   assert.equal(String.fromCharCode(...result.gif.slice(0, 6)), 'GIF89a');
+});
+
+test('falls back to ffmpeg when gifski CRASHES, not just when it is missing', async (t) => {
+  // Regression: gifski died with STATUS_STACK_OVERFLOW (0xC00000FD / 3221225725) on
+  // Windows for large native-resolution frames, and the whole capture was lost —
+  // the fallback only handled gifski being ABSENT, never gifski failing. A recording
+  // cannot be retaken, so a crash must degrade to ffmpeg rather than throw.
+  const stub = path.join(tmpdir(), `gifski-crash-${process.pid}`);
+  if (process.platform === 'win32') return t.skip('shell stub is POSIX-only');
+
+  await writeFile(stub, '#!/bin/sh\necho "simulated crash" >&2\nexit 134\n', { mode: 0o755 });
+  const previous = process.env.GIFOMATOR_GIFSKI;
+  process.env.GIFOMATOR_GIFSKI = stub;
+  clearBinaryCache();
+
+  try {
+    const result = await encode(await load(), { preset: 'small', sourceWidth: SOURCE_W });
+    assert.equal(result.backendUsed, 'ffmpeg', 'a crashing gifski should fall back');
+    assert.equal(String.fromCharCode(...result.gif.slice(0, 6)), 'GIF89a');
+  } finally {
+    if (previous === undefined) delete process.env.GIFOMATOR_GIFSKI;
+    else process.env.GIFOMATOR_GIFSKI = previous;
+    clearBinaryCache();
+    await rm(stub, { force: true });
+  }
+});
+
+test('an explicitly requested gifski backend does not silently substitute', async (t) => {
+  // Automatic fallback is for the default path. If a caller names a backend, a
+  // substitution would make benchmarks and the licence test meaningless.
+  const stub = path.join(tmpdir(), `gifski-crash2-${process.pid}`);
+  if (process.platform === 'win32') return t.skip('shell stub is POSIX-only');
+
+  await writeFile(stub, '#!/bin/sh\nexit 134\n', { mode: 0o755 });
+  const input = await load();
+  const previous = process.env.GIFOMATOR_GIFSKI;
+  process.env.GIFOMATOR_GIFSKI = stub;
+  clearBinaryCache();
+
+  try {
+    await assert.rejects(
+      () => encode(input, { preset: 'small', sourceWidth: SOURCE_W, backend: 'gifski' }),
+      (err) => err instanceof EncodeError,
+    );
+  } finally {
+    if (previous === undefined) delete process.env.GIFOMATOR_GIFSKI;
+    else process.env.GIFOMATOR_GIFSKI = previous;
+    clearBinaryCache();
+    await rm(stub, { force: true });
+  }
 });
 
 test('corrupt input rejects with a typed error carrying stderr', async () => {

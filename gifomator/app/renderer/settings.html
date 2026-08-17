@@ -50,10 +50,12 @@
     <div class="row"><label>Capture region</label><input type="text" id="hk-region" /></div>
     <div class="row"><label>Capture window</label><input type="text" id="hk-window" /></div>
     <div class="row"><label>Capture screen</label><input type="text" id="hk-screen" /></div>
+    <div class="row"><label>Stop and save</label><input type="text" id="hk-stop" /></div>
     <div class="row"><label>Discard</label><input type="text" id="hk-discard" /></div>
     <div class="warn" id="warn"></div>
     <div class="note">
-      Stop a recording by pressing its capture hotkey again, or Esc.
+      A recording can also be stopped by pressing its capture hotkey again, or Esc
+      (grabbed only while recording).
       Conflicts with other applications cannot be detected reliably — if a hotkey
       does nothing, another app has likely claimed it.
     </div>
@@ -65,7 +67,7 @@
     </div>
 
     <script>
-      const fields = ['region', 'window', 'screen', 'discard'];
+      const fields = ['region', 'window', 'screen', 'stop', 'discard'];
       const warn = document.getElementById('warn');
       let settings = null;
       let presets = null;

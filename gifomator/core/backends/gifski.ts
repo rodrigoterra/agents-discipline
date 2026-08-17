@@ -36,10 +36,11 @@ export async function encodeWithGifski(
     { signal, label: 'ffmpeg (decode/scale)' },
   );
 
-  const frames = (await readdir(workspace.framesDir))
-    .filter((f) => f.endsWith('.png'))
-    .sort()
-    .map((f) => path.join(workspace.framesDir, f));
+  // Basenames, not full paths: gifski takes every frame as a command-line argument,
+  // and Windows caps a command line at 32767 characters. Long captures at native
+  // resolution can produce hundreds of frames, so the run happens with cwd set to the
+  // frames directory to keep the command line short.
+  const frames = (await readdir(workspace.framesDir)).filter((f) => f.endsWith('.png')).sort();
 
   if (frames.length === 0) {
     throw new EncodeError('ffmpeg produced no frames from the input', '', null);
@@ -49,12 +50,12 @@ export async function encodeWithGifski(
     binaries.gifski,
     [
       '-q',
-      '-o', workspace.outputPath,
+      '-o', path.resolve(workspace.outputPath),
       '--fps', String(preset.fps),
       '--quality', String(preset.quality),
       '--width', String(targetWidth),
       ...frames,
     ],
-    { signal, label: 'gifski' },
+    { signal, label: 'gifski', cwd: workspace.framesDir },
   );
 }

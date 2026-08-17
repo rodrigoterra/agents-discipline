@@ -41,14 +41,37 @@ export async function encode(input: Uint8Array, opts: EncodeOptions): Promise<En
     }
 
     if (backendUsed === 'gifski') {
-      await encodeWithGifski(
-        { ffmpeg: binaries.ffmpeg, gifski: binaries.gifski! },
-        workspace,
-        preset,
-        targetWidth,
-        opts.signal,
-        opts.crop,
-      );
+      try {
+        await encodeWithGifski(
+          { ffmpeg: binaries.ffmpeg, gifski: binaries.gifski! },
+          workspace,
+          preset,
+          targetWidth,
+          opts.signal,
+          opts.crop,
+        );
+      } catch (err) {
+        // An aborted encode is the user's decision — never silently retry it.
+        if (err instanceof AbortError) throw err;
+        // gifski crashing is exactly what the fallback backend exists for. It has been
+        // seen to die with STATUS_STACK_OVERFLOW (0xC00000FD / 3221225725) on Windows
+        // for large native-resolution frames. Falling back keeps the capture rather
+        // than losing a recording the user cannot retake.
+        if (opts.backend === 'gifski') throw err; // explicitly requested: don't substitute
+        console.error(
+          `[gifomator] gifski failed (${err instanceof Error ? err.message : String(err)}); ` +
+            'retrying with the ffmpeg backend',
+        );
+        await encodeWithFfmpeg(
+          { ffmpeg: binaries.ffmpeg },
+          workspace,
+          preset,
+          targetWidth,
+          opts.signal,
+          opts.crop,
+        );
+        backendUsed = 'ffmpeg';
+      }
     } else {
       await encodeWithFfmpeg(
         { ffmpeg: binaries.ffmpeg },

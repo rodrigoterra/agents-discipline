@@ -33,7 +33,7 @@ function killTree(pid: number): void {
 export function run(
   binary: string,
   args: string[],
-  opts: { signal?: AbortSignal; label: string } = { label: 'process' },
+  opts: { signal?: AbortSignal; label: string; cwd?: string } = { label: 'process' },
 ): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     if (opts.signal?.aborted) {
@@ -41,7 +41,7 @@ export function run(
       return;
     }
 
-    const child = spawn(binary, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(binary, args, { stdio: ['ignore', 'pipe', 'pipe'], cwd: opts.cwd });
     let stdout = '';
     let stderr = '';
     let aborted = false;

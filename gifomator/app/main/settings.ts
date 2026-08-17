@@ -15,6 +15,8 @@ export interface Hotkeys {
   region: string;
   window: string;
   screen: string;
+  /** Dedicated stop-and-save, usable regardless of which mode started the recording. */
+  stop: string;
   discard: string;
 }
 
@@ -38,6 +40,7 @@ function defaults(): Settings {
       region: `${mod}+Shift+9`,
       window: `${mod}+Shift+0`,
       screen: `${mod}+Shift+8`,
+      stop: `${mod}+Shift+S`,
       discard: `${mod}+.`,
     },
     launchAtLogin: false,

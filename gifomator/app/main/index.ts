@@ -62,7 +62,9 @@ let overlayDisplay: Electron.Display | null = null;
 function setState(next: AppState): void {
   state = next;
   updateTray();
-  indicator?.webContents.send('indicator:state', next);
+  // The indicator shows the stop key while recording, so it is discoverable without
+  // opening Settings or remembering which mode started the capture.
+  indicator?.webContents.send('indicator:state', next, loadSettings().hotkeys.stop);
 }
 
 /* --------------------------------------------------- floating indicator -- */
@@ -76,7 +78,8 @@ function setState(next: AppState): void {
  */
 function createIndicator(): void {
   const { workArea } = screen.getPrimaryDisplay();
-  const width = 132;
+  // Wide enough for the longest label ("Recording — Ctrl+Shift+S to stop").
+  const width = 250;
   const height = 32;
 
   indicator = new BrowserWindow({
@@ -148,6 +151,7 @@ function updateTray(): void {
     { type: 'separator' },
     {
       label: 'Stop and save',
+      accelerator: settings.hotkeys.stop,
       enabled: state === 'recording',
       click: () => stopRecording(),
     },
@@ -251,17 +255,20 @@ async function startCapture(mode: CaptureMode): Promise<void> {
  */
 function beginRecording(sourceId: string, limits: { maxWidth: number; maxHeight: number }): void {
   setState('recording');
+  bindEscWhileRecording();
   ensureRecorder().webContents.send('recorder:start', { sourceId, ...limits });
 }
 
 function stopRecording(): void {
   if (state !== 'recording') return;
+  releaseEsc();
   setState('encoding');
   recorder?.webContents.send('recorder:stop');
 }
 
 function discard(): void {
   if (state === 'recording') {
+    releaseEsc();
     recorder?.webContents.send('recorder:discard');
     setState('idle');
   } else if (state === 'encoding') {
@@ -458,7 +465,32 @@ function registerHotkeys(): void {
   bind(hotkeys.region, () => (state === 'recording' ? stopRecording() : void startCapture('region')));
   bind(hotkeys.window, () => (state === 'recording' ? stopRecording() : void startCapture('window')));
   bind(hotkeys.screen, () => (state === 'recording' ? stopRecording() : void startCapture('screen')));
+  // Dedicated stop, so you never have to remember which mode started the recording.
+  bind(hotkeys.stop, () => stopRecording());
   bind(hotkeys.discard, () => discard());
+}
+
+/**
+ * Esc is grabbed only while recording, then released.
+ *
+ * A permanent global Esc binding would swallow the key from every other application,
+ * which is hostile. The spec says Esc stops and saves; it only needs to mean that
+ * during a recording.
+ */
+function bindEscWhileRecording(): void {
+  try {
+    globalShortcut.register('Escape', () => stopRecording());
+  } catch {
+    // Esc is unavailable on this system; the dedicated stop hotkey still works.
+  }
+}
+
+function releaseEsc(): void {
+  try {
+    globalShortcut.unregister('Escape');
+  } catch {
+    // Nothing registered — the desired state either way.
+  }
 }
 
 /* ----------------------------------------------------------- lifecycle -- */
