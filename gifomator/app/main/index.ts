@@ -50,6 +50,18 @@ let pendingCrop: CropRect | undefined;
 /** Whether the in-flight capture should be emitted 1:1 rather than at the preset cap. */
 let pendingNativeScale = false;
 let encodeAbort: AbortController | null = null;
+
+export const MODE_LABELS: Record<CaptureMode, string> = {
+  region: 'Region',
+  window: 'Window',
+  screen: 'Full screen',
+};
+
+/**
+ * Mode the indicator's record button uses, and the one shown on its label.
+ * Remembered from the last capture so the button is one click, not two.
+ */
+let preferredMode: CaptureMode = 'region';
 /**
  * The display the selection overlay was opened on.
  *
@@ -64,7 +76,12 @@ function setState(next: AppState): void {
   updateTray();
   // The indicator shows the stop key while recording, so it is discoverable without
   // opening Settings or remembering which mode started the capture.
-  indicator?.webContents.send('indicator:state', next, loadSettings().hotkeys.stop);
+  indicator?.webContents.send(
+    'indicator:state',
+    next,
+    loadSettings().hotkeys.stop,
+    MODE_LABELS[preferredMode],
+  );
 }
 
 /* --------------------------------------------------- floating indicator -- */
@@ -78,9 +95,9 @@ function setState(next: AppState): void {
  */
 function createIndicator(): void {
   const { workArea } = screen.getPrimaryDisplay();
-  // Wide enough for the longest label ("Recording — Ctrl+Shift+S to stop").
-  const width = 250;
-  const height = 32;
+  // Wide enough for the longest label plus the two control buttons.
+  const width = 268;
+  const height = 36;
 
   indicator = new BrowserWindow({
     width,
@@ -211,6 +228,7 @@ async function startCapture(mode: CaptureMode): Promise<void> {
   if (state !== 'idle') return;
   if (!(await ensureScreenAccess())) return;
 
+  preferredMode = mode;
   pendingCrop = undefined;
   pendingNativeScale = false;
 
@@ -436,6 +454,26 @@ function registerIpc(): void {
     if (res.canceled || !res.filePaths[0]) return null;
     saveSettings({ outputFolder: res.filePaths[0] });
     return res.filePaths[0];
+  });
+
+  // --- floating indicator controls ---
+
+  ipcMain.on('indicator:start', () => void startCapture(preferredMode));
+  ipcMain.on('indicator:stop', () => stopRecording());
+
+  ipcMain.on('indicator:menu', (_e, x: number, y: number) => {
+    if (!indicator || indicator.isDestroyed()) return;
+    const menu = Menu.buildFromTemplate(
+      (Object.keys(MODE_LABELS) as CaptureMode[]).map((mode) => ({
+        label: MODE_LABELS[mode],
+        type: 'radio' as const,
+        checked: preferredMode === mode,
+        // Selecting a mode starts that capture immediately — the menu is the
+        // capture button, not a settings pane.
+        click: () => void startCapture(mode),
+      })),
+    );
+    menu.popup({ window: indicator, x, y });
   });
 
   // Exposed so an automated smoke test can assert responsiveness during encode.

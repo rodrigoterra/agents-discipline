@@ -10,42 +10,90 @@
         -webkit-user-select: none; user-select: none;
         font: 11px -apple-system, "Segoe UI", system-ui, sans-serif;
       }
-      /* -webkit-app-region makes the whole badge a drag handle so it can be moved
-         out of the way without needing a title bar. */
-      #badge {
-        -webkit-app-region: drag;
-        display: flex; align-items: center; gap: 7px;
+      #bar {
+        display: flex; align-items: center;
         width: 100%; height: 100%;
-        box-sizing: border-box; padding: 0 11px;
-        border-radius: 16px;
-        background: rgba(24, 24, 27, 0.82);
+        box-sizing: border-box; padding: 0 6px 0 11px;
+        border-radius: 17px;
+        background: rgba(24, 24, 27, 0.88);
         border: 1px solid rgba(255, 255, 255, 0.14);
         color: #f4f4f5;
         backdrop-filter: blur(8px);
       }
-      #dot {
-        width: 9px; height: 9px; border-radius: 50%;
-        background: #a1a1aa; flex: 0 0 auto;
+
+      /* Only the label area drags — buttons must stay clickable. */
+      #handle {
+        -webkit-app-region: drag;
+        display: flex; align-items: center; gap: 7px;
+        flex: 1 1 auto; min-width: 0; height: 100%;
+        cursor: grab;
       }
+      #dot { width: 9px; height: 9px; border-radius: 50%; background: #a1a1aa; flex: 0 0 auto; }
       body.recording #dot { background: #e5484d; animation: pulse 1.2s ease-in-out infinite; }
-      body.encoding #dot { background: #f5a524; animation: pulse 0.9s ease-in-out infinite; }
+      body.encoding  #dot { background: #f5a524; animation: pulse 0.9s ease-in-out infinite; }
       @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.3 } }
-      #label { white-space: nowrap; }
-      @media (prefers-reduced-motion: reduce) {
-        body.recording #dot, body.encoding #dot { animation: none; }
+      #label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+      #controls {
+        -webkit-app-region: no-drag;
+        display: flex; align-items: center; gap: 3px; flex: 0 0 auto;
       }
+      button {
+        -webkit-app-region: no-drag;
+        display: flex; align-items: center; justify-content: center; gap: 2px;
+        height: 24px; padding: 0 7px;
+        border: 0; border-radius: 12px;
+        background: rgba(255, 255, 255, 0.10);
+        color: #f4f4f5; font: inherit; cursor: pointer;
+      }
+      button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.20); }
+      button:disabled { opacity: 0.35; cursor: default; }
+      #record { background: rgba(229, 72, 77, 0.22); }
+      #record:hover:not(:disabled) { background: rgba(229, 72, 77, 0.38); }
+      body.recording #record { background: rgba(229, 72, 77, 0.9); }
+      svg { display: block; }
+      .caret { opacity: 0.65; }
     </style>
   </head>
   <body>
-    <div id="badge">
-      <div id="dot"></div>
-      <div id="label">Gifomator</div>
+    <div id="bar">
+      <div id="handle">
+        <div id="dot"></div>
+        <div id="label">Gifomator</div>
+      </div>
+
+      <div id="controls">
+        <!-- Capture mode chooser: opens a native menu from the main process, which can
+             render outside this 36px-tall window. -->
+        <button id="capture" title="Capture mode">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/>
+          </svg>
+          <svg class="caret" width="8" height="8" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="3" stroke-linecap="round">
+            <path d="M6 9l6 6 6-6"/>
+          </svg>
+        </button>
+
+        <!-- Start / stop. Shows a filled circle when idle, a square while recording. -->
+        <button id="record" title="Start recording">
+          <svg id="glyph" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="12" cy="12" r="7"/>
+          </svg>
+        </button>
+      </div>
     </div>
+
     <script>
       const label = document.getElementById('label');
+      const record = document.getElementById('record');
+      const capture = document.getElementById('capture');
+      const glyph = document.getElementById('glyph');
+      let current = 'idle';
 
-      // Accelerator strings are Electron's ("CommandOrControl+Shift+S"); shorten them
-      // to what the keycaps actually say so the badge stays narrow.
+      // Accelerator strings are Electron's ("CommandOrControl+Shift+S"); shorten them to
+      // what the keycaps say so the bar stays narrow.
       function pretty(accel) {
         if (!accel) return '';
         const mac = navigator.platform.toLowerCase().includes('mac');
@@ -57,13 +105,37 @@
           .replace(/\+/g, mac ? '' : '+');
       }
 
-      window.gifomator.onIndicatorState((state, stopKey) => {
+      const SQUARE = '<rect x="6" y="6" width="12" height="12" rx="2"/>';
+      const CIRCLE = '<circle cx="12" cy="12" r="7"/>';
+
+      window.gifomator.onIndicatorState((state, stopKey, mode) => {
+        current = state;
         document.body.className = state;
+
         label.textContent =
-          state === 'recording' ? `Recording — ${pretty(stopKey)} to stop`
+          state === 'recording' ? `Recording — ${pretty(stopKey)}`
           : state === 'encoding' ? 'Encoding…'
           : state === 'selecting' ? 'Select an area'
+          : mode ? `Gifomator · ${mode}`
           : 'Gifomator';
+
+        const recording = state === 'recording';
+        glyph.innerHTML = recording ? SQUARE : CIRCLE;
+        record.title = recording ? 'Stop and save' : 'Start recording';
+        // Nothing to start or stop mid-selection or mid-encode.
+        record.disabled = state === 'selecting' || state === 'encoding';
+        capture.disabled = state !== 'idle';
+      });
+
+      record.addEventListener('click', () => {
+        if (current === 'recording') window.gifomator.indicatorStop();
+        else window.gifomator.indicatorStart();
+      });
+
+      capture.addEventListener('click', () => {
+        const r = capture.getBoundingClientRect();
+        // Anchor the native menu under the button.
+        window.gifomator.indicatorMenu(Math.round(r.left), Math.round(r.bottom + 4));
       });
     </script>
   </body>

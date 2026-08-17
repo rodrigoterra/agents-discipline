@@ -25,8 +25,11 @@ contextBridge.exposeInMainWorld('gifomator', {
     ipcRenderer.send('recorder:data', buffer, width, height),
 
   // Floating desktop indicator
-  onIndicatorState: (cb: (state: string, stopKey: string) => void) =>
-    ipcRenderer.on('indicator:state', (_e, state, stopKey) => cb(state, stopKey)),
+  onIndicatorState: (cb: (state: string, stopKey: string, mode: string) => void) =>
+    ipcRenderer.on('indicator:state', (_e, state, stopKey, mode) => cb(state, stopKey, mode)),
+  indicatorStart: () => ipcRenderer.send('indicator:start'),
+  indicatorStop: () => ipcRenderer.send('indicator:stop'),
+  indicatorMenu: (x: number, y: number) => ipcRenderer.send('indicator:menu', x, y),
 
   // Settings
   getSettings: () => ipcRenderer.invoke('settings:get'),

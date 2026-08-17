@@ -86,29 +86,52 @@ file is too big to post, use `small`, or capture a tighter region.
 
 ## Desktop indicator
 
-A small floating badge shows the app is alive and what it's doing (idle / selecting /
-recording / encoding). It is **excluded from captures** via `setContentProtection` —
-`WDA_EXCLUDEFROMCAPTURE` on Windows, window sharing type on macOS — so it never appears in
-your GIFs, including captures of the screen it sits on. Drag it anywhere; toggle it from the
-tray menu.
+A small floating bar shows the app is alive and what it's doing (idle / selecting /
+recording / encoding), and carries two controls:
+
+- **Capture ▾** — pick Region / Window / Full screen; choosing one starts that capture.
+- **● / ■** — start the last-used mode, or stop and save.
+
+It is **excluded from captures** via `setContentProtection` — `WDA_EXCLUDEFROMCAPTURE` on
+Windows, window sharing type on macOS — so it never appears in your GIFs, including captures
+of the screen it sits on. Drag it by the label; toggle it from the tray menu.
+
+## Dither quality
+
+The ffmpeg backend uses `dither=bayer:bayer_scale=5`, chosen by measurement rather than
+taste. ffmpeg's default bayer uses a coarse ordered matrix whose pattern is plainly visible
+as regular lines on flat dark UI. Measured against the source on a dark-UI fixture (SSIM)
+and on a gradient-heavy fixture (size):
+
+| dither | UI SSIM | UI size | gradients |
+|---|---|---|---|
+| `bayer` (ffmpeg default, scale 2) | 0.8577 | 238K | 33.0 MB |
+| **`bayer_scale=5`** | **0.9993** | **234K** | **26.4 MB** |
+| `sierra2_4a` (error diffusion) | 0.9994 | 236K | 52.4 MB |
+
+`bayer_scale=5` matches error diffusion's fidelity on UI content while producing the
+smallest files on both fixtures — error diffusion's noise compresses badly on gradients.
 
 ## Known limitations
 
-**Encoding is slow, and file sizes on real content are large.** Measured on a 4-core
-Linux runner, 10 s at 720p:
+**Encoding is slow, and size depends enormously on content.** Measured on a 4-core Linux
+runner:
 
-| preset | synthetic fixture | stress fixture | encode time (stress) |
+| fixture | preset | size | note |
 |---|---|---|---|
-| small | 1.18 MB | 9.20 MB | 8.7 s |
-| balanced | 4.76 MB | 37.77 MB | 24.2 s |
-| sharp | 9.70 MB | 68.49 MB | 39.6 s |
+| dark UI, 6 s | small | **80 KB** | realistic screen recording |
+| dark UI, 6 s | balanced | **234 KB** | realistic screen recording |
+| mandelbrot gradients, 10 s | small | 9.2 MB | deliberate worst case |
+| mandelbrot gradients, 10 s | balanced | 26.4 MB | deliberate worst case |
 
-The stress fixture is a deliberate worst case (continuous mandelbrot gradients under
-text); real screen content has large flat regions and should land between the columns.
-But the direction is clear: **`balanced` can emit a file far too large to post**, and
-preset values still need calibration against genuine screen recordings. Tracked as an
-open question in the Phase 1 spec — the likely fix is size-aware preset selection, which
-is a design change rather than a tuning tweak.
+**Real UI content is small** — flat regions and text compress extremely well. The alarming
+multi-megabyte numbers come from a pathological gradient fixture chosen to stress palette
+quantization, and are not representative of screen recordings. Content matters far more
+than the preset does.
+
+Encode time is the real cost: roughly 8–24 s for 10 s of 720p, dominated by quantization.
+Because the app saves silently and puts the result on your clipboard, you are not *blocked*
+during encoding — but the gap between stopping and the toast is real.
 
 Because the app saves silently and puts the result on your clipboard, you are not
 *blocked* during encoding — but the gap between stopping and the toast is real.

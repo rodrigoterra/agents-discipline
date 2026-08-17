@@ -19,9 +19,23 @@ export async function encodeWithFfmpeg(
   signal?: AbortSignal,
   crop?: CropRect,
 ): Promise<void> {
+  // dither=bayer:bayer_scale=5, measured rather than guessed.
+  //
+  // ffmpeg's default bayer (scale 2) uses a coarse ordered matrix whose pattern is
+  // plainly visible as regular lines on flat dark UI — the artifact that prompted
+  // this change. Measured on a dark-UI fixture against the source (SSIM) and on a
+  // gradient-heavy fixture (size):
+  //
+  //   bayer (scale 2)   SSIM 0.8577   UI 238K   gradients 33.0MB
+  //   bayer_scale=5     SSIM 0.9993   UI 234K   gradients 26.4MB
+  //   sierra2_4a        SSIM 0.9994   UI 236K   gradients 52.4MB
+  //
+  // bayer_scale=5 matches error diffusion's fidelity on UI content while staying the
+  // smallest on both fixtures — error diffusion's noise compresses badly on gradients.
   const filter =
     `${videoFilter(preset, targetWidth, crop)},split[a][b];` +
-    `[a]palettegen=max_colors=${preset.maxColors}[p];[b][p]paletteuse=dither=bayer`;
+    `[a]palettegen=max_colors=${preset.maxColors}[p];` +
+    `[b][p]paletteuse=dither=bayer:bayer_scale=5`;
 
   await run(
     binaries.ffmpeg,
