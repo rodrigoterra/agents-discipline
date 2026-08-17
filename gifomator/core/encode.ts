@@ -24,7 +24,7 @@ async function chooseBackend(requested: Backend | undefined): Promise<Backend> {
 export async function encode(input: Uint8Array, opts: EncodeOptions): Promise<EncodeResult> {
   const started = Date.now();
   const preset = getPreset(opts.preset);
-  const targetWidth = outputWidth(preset, opts.sourceWidth);
+  const targetWidth = outputWidth(preset, opts.sourceWidth, opts.nativeScale);
   const binaries = resolveBinaries();
   const workspace = await createWorkspace();
 

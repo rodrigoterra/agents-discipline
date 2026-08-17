@@ -1,6 +1,6 @@
 {
   "name": "gifomator",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Screen recording to GIF — tray-resident, hotkey-driven, silent save",
   "private": true,
   "type": "module",

@@ -29,11 +29,15 @@ export function getPreset(name: PresetName): Preset {
  * Never upscales: a 640px source under `sharp` (max 1600) stays 640px. Upscaling a
  * GIF only inflates bytes without adding information.
  */
-export function outputWidth(preset: Preset, sourceWidth: number): number {
+export function outputWidth(preset: Preset, sourceWidth: number, nativeScale = false): number {
   if (!Number.isFinite(sourceWidth) || sourceWidth <= 0) {
     throw new Error(`Invalid sourceWidth: ${sourceWidth}`);
   }
-  return Math.min(preset.maxWidth, Math.floor(sourceWidth));
+  const width = Math.floor(sourceWidth);
+  // nativeScale bypasses the cap for window/region captures, which the user selected
+  // deliberately and expects back 1:1. Widths must stay even for the encoders.
+  if (nativeScale) return width % 2 === 0 ? width : width - 1;
+  return Math.min(preset.maxWidth, width);
 }
 
 /**

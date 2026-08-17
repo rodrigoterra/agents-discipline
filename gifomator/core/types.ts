@@ -40,6 +40,15 @@ export interface EncodeOptions {
    * here, so cropping stays in one tested place rather than in renderer canvas code.
    */
   readonly crop?: CropRect;
+  /**
+   * Emit at the source's own pixel dimensions, ignoring the preset's width cap.
+   *
+   * Used for window and region captures, where the user picked an exact area and
+   * expects it back 1:1 — downscaling a selected window to the preset cap makes UI
+   * text unreadable, which is the whole reason for capturing it. Full-screen captures
+   * keep the cap, since a 4K display at 1:1 produces an unusable file.
+   */
+  readonly nativeScale?: boolean;
   /** Force a backend. Omitted means gifski, falling back to ffmpeg if unavailable. */
   readonly backend?: Backend;
   readonly signal?: AbortSignal;

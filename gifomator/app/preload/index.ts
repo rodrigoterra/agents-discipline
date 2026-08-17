@@ -17,12 +17,16 @@ contextBridge.exposeInMainWorld('gifomator', {
     ipcRenderer.send('overlay:window-picked', payload),
 
   // Recorder
-  onStart: (cb: (arg: { sourceId: string; sourceWidth: number }) => void) =>
+  onStart: (cb: (arg: { sourceId: string; maxWidth: number; maxHeight: number }) => void) =>
     ipcRenderer.on('recorder:start', (_e, arg) => cb(arg)),
   onStop: (cb: () => void) => ipcRenderer.on('recorder:stop', () => cb()),
   onDiscard: (cb: () => void) => ipcRenderer.on('recorder:discard', () => cb()),
-  sendData: (buffer: ArrayBuffer, sourceWidth: number) =>
-    ipcRenderer.send('recorder:data', buffer, sourceWidth),
+  sendData: (buffer: ArrayBuffer, width: number, height: number) =>
+    ipcRenderer.send('recorder:data', buffer, width, height),
+
+  // Floating desktop indicator
+  onIndicatorState: (cb: (state: string) => void) =>
+    ipcRenderer.on('indicator:state', (_e, state) => cb(state)),
 
   // Settings
   getSettings: () => ipcRenderer.invoke('settings:get'),

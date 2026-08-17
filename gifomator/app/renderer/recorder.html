@@ -10,13 +10,14 @@
       let recorder = null;
       let chunks = [];
       let stream = null;
-      let currentWidth = 1280;
+      let dimensions = { width: 0, height: 0 };
       let discarded = false;
 
-      window.gifomator.onStart(async ({ sourceId, sourceWidth }) => {
-        currentWidth = sourceWidth;
+      window.gifomator.onStart(async ({ sourceId, maxWidth, maxHeight }) => {
         discarded = false;
         chunks = [];
+        dimensions = { width: 0, height: 0 };
+
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             audio: false,
@@ -24,15 +25,28 @@
               mandatory: {
                 chromeMediaSource: 'desktop',
                 chromeMediaSourceId: sourceId,
+                // Without explicit maxima Chromium caps desktop capture at 1280x720,
+                // silently downscaling everything. These are ceilings, not targets.
+                maxWidth: maxWidth || 3840,
+                maxHeight: maxHeight || 2160,
                 maxFrameRate: 30,
               },
             },
           });
         } catch (err) {
           console.error('[gifomator] getUserMedia failed', err);
-          window.gifomator.sendData(new ArrayBuffer(0), currentWidth);
+          window.gifomator.sendData(new ArrayBuffer(0), 0, 0);
           return;
         }
+
+        // The track's own settings are the only trustworthy source of the captured
+        // resolution. Deriving it from a picker thumbnail produced 320px-wide GIFs.
+        const track = stream.getVideoTracks()[0];
+        const settings = track ? track.getSettings() : {};
+        dimensions = {
+          width: settings.width || 0,
+          height: settings.height || 0,
+        };
 
         recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
         recorder.ondataavailable = (e) => {
@@ -46,7 +60,7 @@
           }
           const blob = new Blob(chunks, { type: 'video/webm' });
           const buffer = await blob.arrayBuffer();
-          window.gifomator.sendData(buffer, currentWidth);
+          window.gifomator.sendData(buffer, dimensions.width, dimensions.height);
           chunks = [];
         };
         recorder.start(100);

@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Gifomator</title>
+    <style>
+      html, body {
+        margin: 0; width: 100%; height: 100%;
+        background: transparent; overflow: hidden;
+        -webkit-user-select: none; user-select: none;
+        font: 11px -apple-system, "Segoe UI", system-ui, sans-serif;
+      }
+      /* -webkit-app-region makes the whole badge a drag handle so it can be moved
+         out of the way without needing a title bar. */
+      #badge {
+        -webkit-app-region: drag;
+        display: flex; align-items: center; gap: 7px;
+        width: 100%; height: 100%;
+        box-sizing: border-box; padding: 0 11px;
+        border-radius: 16px;
+        background: rgba(24, 24, 27, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        color: #f4f4f5;
+        backdrop-filter: blur(8px);
+      }
+      #dot {
+        width: 9px; height: 9px; border-radius: 50%;
+        background: #a1a1aa; flex: 0 0 auto;
+      }
+      body.recording #dot { background: #e5484d; animation: pulse 1.2s ease-in-out infinite; }
+      body.encoding #dot { background: #f5a524; animation: pulse 0.9s ease-in-out infinite; }
+      @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.3 } }
+      #label { white-space: nowrap; }
+      @media (prefers-reduced-motion: reduce) {
+        body.recording #dot, body.encoding #dot { animation: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="badge">
+      <div id="dot"></div>
+      <div id="label">Gifomator</div>
+    </div>
+    <script>
+      const label = document.getElementById('label');
+      window.gifomator.onIndicatorState((state) => {
+        document.body.className = state;
+        label.textContent =
+          state === 'recording' ? 'Recording…'
+          : state === 'encoding' ? 'Encoding…'
+          : state === 'selecting' ? 'Select an area'
+          : 'Gifomator';
+      });
+    </script>
+  </body>
+</html>

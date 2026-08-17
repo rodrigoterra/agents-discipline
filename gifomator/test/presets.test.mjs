@@ -33,6 +33,25 @@ test('invalid source widths are rejected rather than silently coerced', () => {
   assert.throws(() => outputWidth(getPreset('balanced'), NaN), /Invalid sourceWidth/);
 });
 
+test('nativeScale emits at source width, ignoring the preset cap', () => {
+  // Regression: window captures were downscaled to 320px because the picker
+  // thumbnail's width was passed as the source width. Window and region captures
+  // are exact areas the user selected and must come back 1:1.
+  assert.equal(outputWidth(getPreset('balanced'), 1920, true), 1920);
+  assert.equal(outputWidth(getPreset('small'), 2560, true), 2560);
+  // Still capped when nativeScale is off.
+  assert.equal(outputWidth(getPreset('balanced'), 1920, false), PRESETS.balanced.maxWidth);
+});
+
+test('nativeScale widths are always even', () => {
+  // Odd widths break the encoders; scale=w:-2 only guarantees an even height.
+  assert.equal(outputWidth(getPreset('balanced'), 1921, true), 1920);
+  assert.equal(outputWidth(getPreset('balanced'), 1367, true), 1366);
+  for (const w of [999, 1001, 1365, 2049]) {
+    assert.equal(outputWidth(getPreset('sharp'), w, true) % 2, 0);
+  }
+});
+
 test('height rounds to even, matching ffmpeg scale=w:-2', () => {
   // 1280x720 scaled to 1200 wide: exact is 675, ffmpeg rounds to nearest even = 676.
   // Naive truncation would predict 674 — this is why the value is measured, not derived.

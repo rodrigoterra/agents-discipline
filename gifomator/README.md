@@ -69,6 +69,29 @@ layer a future MCP wrapper would call directly.
 | `npm run typecheck:core` | Type-check `core/` with Electron types absent |
 | `npm run dist:win` / `dist:mac` | Package installers into `release/` |
 
+## Capture resolution
+
+| Mode | Output |
+|---|---|
+| **Window** | **1:1** — the window's own pixel dimensions |
+| **Region** | **1:1** — the area you drew |
+| **Full screen** | Downscaled to the preset's width cap |
+
+Window and region captures are exact areas you chose, so they come back at native size —
+downscaling a window makes its UI text unreadable, which is the reason for capturing it.
+Full screen keeps the cap because a 4K display at 1:1 produces an unusable file.
+
+**Consequence:** 1:1 window captures are larger than the preset table below implies. If a
+file is too big to post, use `small`, or capture a tighter region.
+
+## Desktop indicator
+
+A small floating badge shows the app is alive and what it's doing (idle / selecting /
+recording / encoding). It is **excluded from captures** via `setContentProtection` —
+`WDA_EXCLUDEFROMCAPTURE` on Windows, window sharing type on macOS — so it never appears in
+your GIFs, including captures of the screen it sits on. Drag it anywhere; toggle it from the
+tray menu.
+
 ## Known limitations
 
 **Encoding is slow, and file sizes on real content are large.** Measured on a 4-core

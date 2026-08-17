@@ -19,7 +19,6 @@ import {
   desktopCapturer,
   globalShortcut,
   ipcMain,
-  nativeImage,
   screen,
   shell,
 } from 'electron';
@@ -29,6 +28,7 @@ import { encode } from '../../core/encode.js';
 import { PRESETS } from '../../core/presets.js';
 import { AbortError } from '../../core/types.js';
 import type { CropRect, PresetName } from '../../core/types.js';
+import { trayIcon } from './icon.js';
 import { deliver } from './output.js';
 import { ensureScreenAccess } from './permissions.js';
 import { loadSettings, saveSettings } from './settings.js';
@@ -44,8 +44,11 @@ let tray: Tray | null = null;
 let recorder: BrowserWindow | null = null;
 let overlay: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
+let indicator: BrowserWindow | null = null;
 let state: AppState = 'idle';
 let pendingCrop: CropRect | undefined;
+/** Whether the in-flight capture should be emitted 1:1 rather than at the preset cap. */
+let pendingNativeScale = false;
 let encodeAbort: AbortController | null = null;
 /**
  * The display the selection overlay was opened on.
@@ -59,25 +62,59 @@ let overlayDisplay: Electron.Display | null = null;
 function setState(next: AppState): void {
   state = next;
   updateTray();
+  indicator?.webContents.send('indicator:state', next);
+}
+
+/* --------------------------------------------------- floating indicator -- */
+
+/**
+ * Small always-on-top badge showing the app is alive and what it is doing.
+ *
+ * setContentProtection(true) is what keeps it out of captures: on Windows it applies
+ * WDA_EXCLUDEFROMCAPTURE and on macOS it sets the window's sharing type, so the badge
+ * stays visible to the user while being invisible to the recorder — including our own.
+ */
+function createIndicator(): void {
+  const { workArea } = screen.getPrimaryDisplay();
+  const width = 132;
+  const height = 32;
+
+  indicator = new BrowserWindow({
+    width,
+    height,
+    x: workArea.x + workArea.width - width - 20,
+    y: workArea.y + 20,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    focusable: false,
+    hasShadow: false,
+    show: false,
+    webPreferences: { preload: preloadPath, contextIsolation: true, nodeIntegration: false },
+  });
+
+  // Must be set before the window is shown to take effect on Windows.
+  indicator.setContentProtection(true);
+  indicator.setAlwaysOnTop(true, 'screen-saver');
+  indicator.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+  void indicator.loadFile(path.join(rendererDir, 'indicator.html')).then(() => {
+    indicator?.showInactive();
+    indicator?.webContents.send('indicator:state', state);
+  });
+
+  indicator.on('closed', () => {
+    indicator = null;
+  });
 }
 
 /* ------------------------------------------------------------------ tray -- */
 
-function trayIcon(): Electron.NativeImage {
-  // A 16x16 filled circle, drawn inline so the build needs no binary asset.
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">
-    <circle cx="8" cy="8" r="6" fill="${state === 'recording' ? '#e5484d' : '#8b8b8b'}"/>
-  </svg>`;
-  const image = nativeImage.createFromDataURL(
-    `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`,
-  );
-  image.setTemplateImage(state !== 'recording');
-  return image;
-}
-
 function updateTray(): void {
   if (!tray) return;
-  tray.setImage(trayIcon());
+  tray.setImage(trayIcon(state === 'recording'));
 
   const settings = loadSettings();
   const label =
@@ -135,6 +172,16 @@ function updateTray(): void {
     },
     { label: 'Open output folder', click: () => void shell.openPath(settings.outputFolder) },
     { label: 'Settings…', click: () => openSettings() },
+    {
+      label: 'Show desktop indicator',
+      type: 'checkbox',
+      checked: Boolean(indicator && !indicator.isDestroyed()),
+      click: () => {
+        if (indicator && !indicator.isDestroyed()) indicator.close();
+        else createIndicator();
+        updateTray();
+      },
+    },
     { type: 'separator' },
     { label: 'Quit Gifomator', click: () => app.quit() },
   ]);
@@ -161,6 +208,7 @@ async function startCapture(mode: CaptureMode): Promise<void> {
   if (!(await ensureScreenAccess())) return;
 
   pendingCrop = undefined;
+  pendingNativeScale = false;
 
   if (mode === 'region') {
     setState('selecting');
@@ -181,18 +229,29 @@ async function startCapture(mode: CaptureMode): Promise<void> {
     return;
   }
 
-  // Full screen: the display under the cursor.
+  // Full screen: the display under the cursor. Keeps the preset cap — a 4K display
+  // at 1:1 would produce an unusable file.
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const sources = await desktopCapturer.getSources({ types: ['screen'] });
   const source =
     sources.find((s) => s.display_id === String(display.id)) ?? sources[0];
   if (!source) return;
-  beginRecording(source.id, display.size.width * display.scaleFactor);
+  beginRecording(source.id, {
+    maxWidth: Math.round(display.size.width * display.scaleFactor),
+    maxHeight: Math.round(display.size.height * display.scaleFactor),
+  });
 }
 
-function beginRecording(sourceId: string, sourceWidth: number): void {
+/**
+ * Starts the recorder.
+ *
+ * Note there is no sourceWidth parameter: the renderer reports the real captured
+ * dimensions from the video track once the stream exists. Passing a guess from here
+ * is what produced 320px-wide window captures — the picker thumbnail's width.
+ */
+function beginRecording(sourceId: string, limits: { maxWidth: number; maxHeight: number }): void {
   setState('recording');
-  ensureRecorder().webContents.send('recorder:start', { sourceId, sourceWidth });
+  ensureRecorder().webContents.send('recorder:start', { sourceId, ...limits });
 }
 
 function stopRecording(): void {
@@ -294,16 +353,24 @@ function registerIpc(): void {
       setState('idle');
       return;
     }
-    beginRecording(source.id, pendingCrop.width);
+    // A region is an exact area the user drew — give it back 1:1.
+    pendingNativeScale = true;
+    beginRecording(source.id, {
+      maxWidth: Math.round(display.size.width * scale),
+      maxHeight: Math.round(display.size.height * scale),
+    });
   });
 
-  ipcMain.on('overlay:window-picked', (_e, payload: { id: string; width: number } | null) => {
+  ipcMain.on('overlay:window-picked', (_e, payload: { id: string } | null) => {
     closeOverlay();
     if (!payload) {
       setState('idle');
       return;
     }
-    beginRecording(payload.id, payload.width || 1280);
+    // A picked window is emitted at its own resolution: downscaling it to the preset
+    // cap makes the UI text unreadable, which is the reason for capturing it at all.
+    pendingNativeScale = true;
+    beginRecording(payload.id, { maxWidth: 3840, maxHeight: 2160 });
   });
 
   ipcMain.on('overlay:cancel', () => {
@@ -312,14 +379,20 @@ function registerIpc(): void {
   });
 
   // Recorder finished: raw webm arrives, core/ turns it into a GIF.
-  ipcMain.on('recorder:data', async (_e, buffer: ArrayBuffer, sourceWidth: number) => {
+  ipcMain.on('recorder:data', async (_e, buffer: ArrayBuffer, width: number, height: number) => {
     const settings = loadSettings();
+    if (buffer.byteLength === 0 || width === 0) {
+      console.error('[gifomator] capture produced no data');
+      setState('idle');
+      return;
+    }
     encodeAbort = new AbortController();
     try {
       const result = await encode(new Uint8Array(buffer), {
         preset: settings.preset,
-        sourceWidth: pendingCrop ? pendingCrop.width : sourceWidth,
+        sourceWidth: pendingCrop ? pendingCrop.width : width,
         crop: pendingCrop,
+        nativeScale: pendingNativeScale,
         signal: encodeAbort.signal,
       });
       await deliver(result, settings.outputFolder);
@@ -334,6 +407,7 @@ function registerIpc(): void {
     } finally {
       encodeAbort = null;
       pendingCrop = undefined;
+      pendingNativeScale = false;
       setState('idle');
     }
   });
@@ -393,11 +467,12 @@ app.whenReady().then(() => {
   // Menu-bar / tray resident: no dock icon on macOS.
   if (process.platform === 'darwin') app.dock?.hide();
 
-  tray = new Tray(trayIcon());
+  tray = new Tray(trayIcon(false));
   registerIpc();
   registerHotkeys();
   updateTray();
   ensureRecorder();
+  createIndicator();
 });
 
 app.on('window-all-closed', () => {
