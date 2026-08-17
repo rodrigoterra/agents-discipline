@@ -172,6 +172,25 @@ test('an explicitly requested gifski backend does not silently substitute', asyn
   }
 });
 
+test('encodes a large capture at 1:1 without exhausting memory', async () => {
+  // Regression: with the preset width cap removed for window/region captures, a
+  // single-pass palettegen graph buffered every full-size frame and ffmpeg exited 1
+  // ("ffmpeg (palettegen/paletteuse) exited with code 1"). A 10s 2560x1440 capture
+  // needs ~2GB that way. The palette is now built from a downscaled, time-sampled
+  // copy so pass two can stream.
+  const input = new Uint8Array(await readFile(fixtures.large));
+  const result = await encode(input, {
+    preset: 'balanced',
+    sourceWidth: 1920,
+    nativeScale: true,
+    backend: 'ffmpeg',
+  });
+
+  assert.equal(result.width, 1920, 'nativeScale must not downscale');
+  assert.equal(String.fromCharCode(...result.gif.slice(0, 6)), 'GIF89a');
+  assert.ok(result.frameCount > 0);
+});
+
 test('corrupt input rejects with a typed error carrying stderr', async () => {
   const truncated = (await load()).slice(0, 1024);
   await assert.rejects(

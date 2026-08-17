@@ -21,6 +21,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 export const FIXTURE_DIR = here;
 export const SYNTHETIC = path.join(here, 'synthetic.webm');
 export const TEXT = path.join(here, 'text.webm');
+export const LARGE = path.join(here, 'large.webm');
 
 export function ffmpegPath() {
   if (process.env.GIFOMATOR_FFMPEG) return process.env.GIFOMATOR_FFMPEG;
@@ -76,7 +77,18 @@ export async function ensureFixtures({ duration = 10 } = {}) {
     ]);
   }
 
-  return { synthetic: SYNTHETIC, text: TEXT };
+  if (!existsSync(LARGE)) {
+    // 1920x1080 so a nativeScale encode is genuinely large. Single-pass palettegen
+    // buffers every frame, so this geometry is what broke the encoder once the preset
+    // width cap was removed — the fixture exists to keep that fixed.
+    await run([
+      '-v', 'error', '-y',
+      '-f', 'lavfi', '-i', `testsrc=duration=4:size=1920x1080:rate=30`,
+      '-pix_fmt', 'yuv420p', LARGE,
+    ]);
+  }
+
+  return { synthetic: SYNTHETIC, text: TEXT, large: LARGE };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

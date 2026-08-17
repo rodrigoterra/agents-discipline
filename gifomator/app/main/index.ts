@@ -17,16 +17,18 @@ import {
   Tray,
   app,
   desktopCapturer,
+  Notification,
   globalShortcut,
   ipcMain,
   screen,
   shell,
 } from 'electron';
+import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { encode } from '../../core/encode.js';
 import { PRESETS } from '../../core/presets.js';
-import { AbortError } from '../../core/types.js';
+import { AbortError, EncodeError } from '../../core/types.js';
 import type { CropRect, PresetName } from '../../core/types.js';
 import { trayIcon } from './icon.js';
 import { deliver } from './output.js';
@@ -352,6 +354,44 @@ function openSettings(): void {
   });
 }
 
+/* --------------------------------------------------------- diagnostics -- */
+
+function lastStderrLine(stderr: string): string {
+  const lines = stderr.split('\n').map((l) => l.trim()).filter(Boolean);
+  return lines[lines.length - 1]?.slice(0, 160) ?? '';
+}
+
+/**
+ * Writes an encode failure to a log file and returns its path.
+ *
+ * Includes the capture geometry, because both encoder failures so far were caused by
+ * frame size rather than by anything in the video itself.
+ */
+async function writeErrorLog(err: unknown, geometry: { width: number; height: number }): Promise<string> {
+  const logPath = path.join(app.getPath('userData'), 'gifomator-last-error.log');
+  const settings = loadSettings();
+  const body = [
+    `Gifomator ${app.getVersion()} — encode failure`,
+    `when:     ${new Date().toISOString()}`,
+    `platform: ${process.platform} ${process.arch}`,
+    `capture:  ${geometry.width}x${geometry.height}` +
+      `${pendingCrop ? ` crop ${Math.round(pendingCrop.width)}x${Math.round(pendingCrop.height)}` : ''}`,
+    `preset:   ${settings.preset}  nativeScale=${pendingNativeScale}`,
+    `error:    ${err instanceof Error ? `${err.name}: ${err.message}` : String(err)}`,
+    '',
+    '--- tool stderr ---',
+    err instanceof EncodeError ? err.stderr || '(empty)' : '(not an EncodeError)',
+    '',
+  ].join('\n');
+
+  try {
+    await writeFile(logPath, body, 'utf8');
+  } catch (writeErr) {
+    console.error('[gifomator] could not write error log:', writeErr);
+  }
+  return logPath;
+}
+
 /* ------------------------------------------------------------------- ipc -- */
 
 function registerIpc(): void {
@@ -423,11 +463,21 @@ function registerIpc(): void {
       await deliver(result, settings.outputFolder);
     } catch (err) {
       if (!(err instanceof AbortError)) {
+        // Write the tool's own stderr to a log file and point the notification at it.
+        // The first two encode failures were diagnosed by guesswork because the toast
+        // showed only the exit code; the underlying stderr is the actual evidence.
+        const logPath = await writeErrorLog(err, { width, height });
         console.error('[gifomator] encode failed:', err);
-        new (await import('electron')).Notification({
+        const detail = err instanceof EncodeError ? lastStderrLine(err.stderr) : '';
+        const notification = new Notification({
           title: 'Gifomator — encode failed',
-          body: err instanceof Error ? err.message : String(err),
-        }).show();
+          body:
+            `${err instanceof Error ? err.message : String(err)}` +
+            `${detail ? `\n${detail}` : ''}` +
+            `\nClick to open the log.`,
+        });
+        notification.on('click', () => void shell.showItemInFolder(logPath));
+        notification.show();
       }
     } finally {
       encodeAbort = null;
