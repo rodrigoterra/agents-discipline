@@ -8,6 +8,22 @@ clipboard. No dialog, no export step, no file hunting.
 Specs: [`../specs/gifomator-vision.md`](../specs/gifomator-vision.md) ·
 [`../specs/gifomator-phase1-core.md`](../specs/gifomator-phase1-core.md)
 
+## Downloads
+
+| File | What it is |
+|---|---|
+| `Gifomator-<v>-win-x64-portable.exe` | **Single file, ~80 MB.** No install. Settings are written next to the .exe, so it travels on a USB stick and leaves nothing behind. |
+| `Gifomator-<v>-win-x64-setup.exe` | NSIS installer, choose install location |
+| `Gifomator-<v>-win-x64.zip` | Unzip and run |
+| `Gifomator-<v>-mac-arm64.zip` | Unzip, right-click → Open |
+
+**macOS has no true single-file equivalent** — a GUI app is a `.app` *bundle* (a directory
+the OS presents as one item). The zip is already the closest thing; unzipping gives you one
+draggable `Gifomator.app`.
+
+The portable .exe self-extracts to `%TEMP%\Gifomator` on launch. The directory name is
+fixed rather than random, so only the first run pays the extraction cost.
+
 ## Status
 
 **v0.1.0 — unsigned, internal/dev only.** Not for public distribution. See *Known

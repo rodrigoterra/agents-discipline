@@ -1,6 +1,6 @@
 {
   "name": "gifomator",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Screen recording to GIF — tray-resident, hotkey-driven, silent save",
   "private": true,
   "type": "module",
@@ -43,21 +43,38 @@
       "node_modules/gifski/bin/**",
       "node_modules/@ffmpeg-installer/**"
     ],
+    "electronLanguages": [
+      "en-US"
+    ],
     "win": {
       "target": [
         "nsis",
-        "zip"
+        "zip",
+        "portable"
       ],
-      "artifactName": "Gifomator-${version}-win-${arch}.${ext}"
+      "artifactName": "Gifomator-${version}-win-${arch}.${ext}",
+      "files": [
+        "!**/@ffmpeg-installer/{linux-x64,darwin-x64,darwin-arm64}/**",
+        "!**/gifski/bin/{macos,debian}/**"
+      ]
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Gifomator-${version}-win-${arch}-setup.exe"
+    },
+    "portable": {
+      "artifactName": "Gifomator-${version}-win-${arch}-portable.exe",
+      "unpackDirName": "Gifomator"
     },
     "mac": {
       "target": [
         "dmg",
         "zip"
+      ],
+      "files": [
+        "!**/@ffmpeg-installer/{linux-x64,win32-x64,win32-ia32}/**",
+        "!**/gifski/bin/{windows,debian}/**"
       ],
       "category": "public.app-category.utilities",
       "artifactName": "Gifomator-${version}-mac-${arch}.${ext}",

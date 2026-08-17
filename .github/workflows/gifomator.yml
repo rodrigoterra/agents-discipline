@@ -113,4 +113,10 @@ jobs:
 
           # Path is relative to gifomator/ — defaults.run.working-directory applies to
           # `run:` steps (unlike actions/upload-artifact, whose paths are workspace-relative).
-          gh release upload "$TAG" release/*.zip --clobber
+          # .exe as well as .zip: the Windows matrix leg emits a portable single-file
+          # build and an NSIS installer alongside the zip. nullglob so the macOS leg,
+          # which produces no .exe, does not upload a literal "release/*.exe".
+          shopt -s nullglob
+          ASSETS=(release/*.zip release/*.exe release/*.dmg)
+          printf 'uploading: %s\n' "${ASSETS[@]}"
+          gh release upload "$TAG" "${ASSETS[@]}" --clobber

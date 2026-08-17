@@ -47,8 +47,20 @@ function defaults(): Settings {
   };
 }
 
+/**
+ * Where settings live.
+ *
+ * electron-builder's portable target sets PORTABLE_EXECUTABLE_DIR to the folder the
+ * .exe was launched from. Writing there keeps a portable build genuinely portable —
+ * settings travel with the executable on a USB stick and nothing is left in AppData.
+ * Everything else uses the normal per-user location.
+ */
+function settingsDir(): string {
+  return process.env.PORTABLE_EXECUTABLE_DIR || app.getPath('userData');
+}
+
 function settingsPath(): string {
-  return path.join(app.getPath('userData'), 'settings.json');
+  return path.join(settingsDir(), 'gifomator-settings.json');
 }
 
 let cache: Settings | null = null;
