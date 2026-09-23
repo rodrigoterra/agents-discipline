@@ -1,6 +1,6 @@
 # Codex Council skill
 
-- **Status:** draft
+- **Status:** in-progress (built and tested on branch claude/eager-noether-ctykr3; awaiting merge)
 - **Owner:** rodrigoterra
 - **Created:** 2026-09-23
 - **Spec ID:** codex-council
@@ -23,26 +23,26 @@ and plugs the council into the Claude and Codex adversarial loop in two explicit
 - Fixing the pre-existing `codex review --branch` example in `/agents-review` (reported separately).
 
 ## Requirements
-- [ ] **R1 Install.** Merge guide section 1 into `config.toml` without creating duplicate tables,
+- [x] **R1 Install.** Merge guide section 1 into `config.toml` without creating duplicate tables,
   write the six role files, and insert the council block into `AGENTS.md` between markers.
   Target is global `~/.codex` by default, or a project (`.codex/` plus the project `AGENTS.md`).
-- [ ] **R2 Never overwrite.** A differing existing role file gets a sibling
+- [x] **R2 Never overwrite.** A differing existing role file gets a sibling
   `<name>.toml.proposed`. Never `<name>.proposed.toml`: Codex loads every `.toml` in `agents/`,
   so that file would register a second role with the same name.
-- [ ] **R3 One roster.** The role files are the source of truth. The AGENTS.md roster table is
+- [x] **R3 One roster.** The role files are the source of truth. The AGENTS.md roster table is
   generated from them, and the checker fails when they drift.
-- [ ] **R4 Ask every time.** Each invocation asks what the user wants now: install or update,
+- [x] **R4 Ask every time.** Each invocation asks what the user wants now: install or update,
   check, council REVIEW, or council BUILD. A request that implies a mode pre-selects it but
   still asks.
-- [ ] **R5 Blind Claude reviewer seat.** Claude Opus 5.5, effort `xhigh`, read-only tools. Sees
+- [x] **R5 Blind Claude reviewer seat.** Claude Opus 5.5, effort `xhigh`, read-only tools. Sees
   only the spec and the diff, never the Codex findings, so it cannot anchor on them.
-- [ ] **R6 Auditor seat.** Claude Fable 5.1, read-only tools, minimal context: only the run
+- [x] **R6 Auditor seat.** Claude Fable 5.1, read-only tools, minimal context: only the run
   folder. Audits the council's process (not the code) and writes `AUDIT.md`.
-- [ ] **R7 Audit trail.** Every council run writes `.council/<run-id>/` containing `run.md`,
+- [x] **R7 Audit trail.** Every council run writes `.council/<run-id>/` containing `run.md`,
   `brief.md`, `diff.patch`, `codex-report.md`, `blind-review.md`, `REVIEW.md` and `AUDIT.md`.
-- [ ] **R8 Integration.** A `/agents-council` command, a council option inside `/agents-review`,
+- [x] **R8 Integration.** A `/agents-council` command, a council option inside `/agents-review`,
   and a Claude Desktop zip that carries the skill's bundled files.
-- [ ] **R9 No silent substitution.** A missing Codex CLI, role, model, subagent type or seat is
+- [x] **R9 No silent substitution.** A missing Codex CLI, role, model, subagent type or seat is
   reported to the user, never quietly replaced.
 
 ## Design
@@ -105,30 +105,30 @@ ask mode ─┬─ install/update ─► survey ─► propose diff ─► confi
 ```
 
 ## Tasks
-- [ ] T1 Bundle guide sections 1 to 3 as `skills/codex-council/assets/codex/`, with the roster table regenerated from the role files.
-- [ ] T2 Write `scripts/check_council.py` (parse, required fields, allowed values, read-only policy, duplicate names, misplaced top-level keys, roster drift).
-- [ ] T3 Write `tests/test_codex_council.py` (unittest): clean assets pass; each injected defect fails with a precise message.
-- [ ] T4 Write `agents/council-blind-reviewer.md` and `agents/council-auditor.md`.
-- [ ] T5 Write `skills/codex-council/SKILL.md` and `references/codex-config.md`.
-- [ ] T6 Add `commands/agents-council.md`; add the council option to `commands/agents-review.md`.
-- [ ] T7 Wire `plugin.json`, `marketplace.json` (1.0.0 to 1.1.0), `README.md`, the agents-discipline skill's command list, `scripts/build-desktop.sh`, `dist-desktop/`.
-- [ ] T8 Run the skill-creator evals (with the skill against a baseline) if the owner wants them.
+- [x] T1 Bundle guide sections 1 to 3 as `skills/codex-council/assets/codex/`, with the roster table regenerated from the role files.
+- [x] T2 Write `scripts/check_council.py` (parse, required fields, allowed values, read-only policy, duplicate names, misplaced top-level keys, roster drift).
+- [x] T3 Write `tests/test_codex_council.py` (unittest): clean assets pass; each injected defect fails with a precise message.
+- [x] T4 Write `agents/council-blind-reviewer.md` and `agents/council-auditor.md`.
+- [x] T5 Write `skills/codex-council/SKILL.md` and `references/codex-config.md`.
+- [x] T6 Add `commands/agents-council.md`; add the council option to `commands/agents-review.md`.
+- [x] T7 Wire `plugin.json`, `marketplace.json` (1.0.0 to 1.1.0), `README.md`, the agents-discipline skill's command list, `scripts/build-desktop.sh`, `dist-desktop/`.
+- [x] T8 Run the skill-creator evals (with the skill against a baseline). Iteration 1: 3 evals x 1 run per configuration; with the skill 100%, without 81%. Findings fixed in b70ff54.
 
 ## Acceptance criteria
-- [ ] Given the bundled assets, when the checker runs, then it reports 0 errors.
-- [ ] Given a roster row whose effort differs from its role file, then the checker reports drift naming the role and the field.
-- [ ] Given a role file with a misspelled key, then the checker warns and names the file and the key.
-- [ ] Given two role files with the same `name`, then the checker errors.
-- [ ] Given a role file without `developer_instructions`, then the checker errors.
-- [ ] Given `model_reasoning_effort = "extreme"`, then the checker errors.
-- [ ] Given a `config.toml` that defines `[agents]` twice, then the checker errors.
-- [ ] Given `model = ...` appended below `[agents]`, then the checker errors and explains the TOML trap.
-- [ ] Given a misplaced key that the top level already sets, then the checker says to delete the line, not move it (moving it would define the key twice, which TOML rejects). Found by eval 2.
-- [ ] Given `explorer` or `reviewer` without `sandbox_mode = "read-only"`, then the checker errors.
-- [ ] Given `worker.proposed.toml` in `agents/`, then the checker errors (duplicate role); given `worker.toml.proposed`, it only warns (pending review).
-- [ ] `plugin.json` and `marketplace.json` parse, share version 1.1.0, and every referenced path exists.
-- [ ] Both Claude seat files declare `name`, `description`, `model` and a tool list with no write-capable tools; the blind reviewer declares effort `xhigh`.
-- [ ] `dist-desktop/codex-council.zip` contains `codex-council/SKILL.md` plus its assets, references and scripts.
+- [x] Given the bundled assets, when the checker runs, then it reports 0 errors.
+- [x] Given a roster row whose effort differs from its role file, then the checker reports drift naming the role and the field.
+- [x] Given a role file with a misspelled key, then the checker warns and names the file and the key.
+- [x] Given two role files with the same `name`, then the checker errors.
+- [x] Given a role file without `developer_instructions`, then the checker errors.
+- [x] Given `model_reasoning_effort = "extreme"`, then the checker errors.
+- [x] Given a `config.toml` that defines `[agents]` twice, then the checker errors.
+- [x] Given `model = ...` appended below `[agents]`, then the checker errors and explains the TOML trap.
+- [x] Given a misplaced key that the top level already sets, then the checker says to delete the line, not move it (moving it would define the key twice, which TOML rejects). Found by eval 2.
+- [x] Given `explorer` or `reviewer` without `sandbox_mode = "read-only"`, then the checker errors.
+- [x] Given `worker.proposed.toml` in `agents/`, then the checker errors (duplicate role); given `worker.toml.proposed`, it only warns (pending review).
+- [x] `plugin.json` and `marketplace.json` parse, share version 1.1.0, and every referenced path exists.
+- [x] Both Claude seat files declare `name`, `description`, `model` and a tool list with no write-capable tools; the blind reviewer declares effort `xhigh`.
+- [x] `dist-desktop/codex-council.zip` contains `codex-council/SKILL.md` plus its assets, references and scripts.
 
 ## Open questions
 - Q: Does `codex exec` let the lead spawn subagents exactly like the interactive TUI?
