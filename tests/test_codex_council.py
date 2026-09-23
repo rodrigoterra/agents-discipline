@@ -268,15 +268,21 @@ class DesktopZipTests(unittest.TestCase):
         self.assertLessEqual(required, names)
         self.assertFalse([n for n in names if "__pycache__" in n or n.endswith(".pyc")])
 
-    def test_zip_is_not_stale(self):
-        """Rebuild with scripts/build-desktop.sh after editing the skill."""
-        with zipfile.ZipFile(ROOT / "dist-desktop" / "codex-council.zip") as bundle:
-            for name in bundle.namelist():
-                if name.endswith("/"):
-                    continue
-                source = SKILL / name.removeprefix("codex-council/")
-                with self.subTest(file=name):
-                    self.assertEqual(source.read_bytes(), bundle.read(name))
+    def test_zips_are_not_stale(self):
+        """Rebuild with scripts/build-desktop.sh after editing either skill."""
+        sources = {"codex-council": SKILL, "agents-discipline": ROOT / "skills" / "agents-discipline"}
+        for skill, folder in sources.items():
+            with zipfile.ZipFile(ROOT / "dist-desktop" / f"{skill}.zip") as bundle:
+                for name in bundle.namelist():
+                    if name.endswith("/"):
+                        continue
+                    with self.subTest(file=name):
+                        self.assertEqual((folder / name.removeprefix(f"{skill}/")).read_bytes(), bundle.read(name))
+
+    def test_skill_frontmatter_is_accepted_by_claude_desktop(self):
+        # Claude Desktop skill uploads only allow these frontmatter keys.
+        allowed = {"name", "description", "license", "allowed-tools", "compatibility", "metadata"}
+        self.assertLessEqual(set(frontmatter(SKILL / "SKILL.md")), allowed)
 
 
 if __name__ == "__main__":

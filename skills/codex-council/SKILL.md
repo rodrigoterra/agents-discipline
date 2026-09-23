@@ -2,7 +2,6 @@
 name: codex-council
 description: Install, check and run a Codex council of native subagents (a lead plus default, worker, explorer, fixer, reviewer and specialist roles) wired into the agents-discipline adversarial loop, with a blind Claude reviewer and a Claude process auditor. Use whenever the user mentions a Codex council, Codex subagents or agent roles, ~/.codex/agents, the [agents] table of config.toml, multi-agent Codex, a subagent workflow in AGENTS.md or /agents-council, or wants Codex to attack what Claude built (REVIEW mode) or to build something Claude then attacks (BUILD mode), even if they never say "council".
 license: MIT
-argument-hint: "[install | check | review | build] [spec or feature]"
 ---
 
 # Codex Council
