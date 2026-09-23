@@ -139,8 +139,15 @@ class CheckerTests(unittest.TestCase):
         self.assertFinding("ERROR", "config.toml", "not valid TOML")
 
     def test_top_level_key_inside_agents_table_is_an_error(self):
-        self.council.append("config.toml", 'model = "gpt-6-sol"\n')  # lands inside [agents]
-        self.assertFinding("ERROR", "`model` sits inside [agents]", "above the first [table] header")
+        self.council.edit("config.toml", 'model = "gpt-6-astra"\n', "")
+        self.council.append("config.toml", 'model = "gpt-6-astra"\n')  # lands inside [agents]
+        self.assertFinding("ERROR", "`model` sits inside [agents]", "Move it above the first [table] header")
+
+    def test_misplaced_key_already_set_at_top_level_says_delete(self):
+        # Moving it up would define the key twice, which makes the whole file invalid TOML.
+        self.council.append("config.toml", "model_context_window = 272000\n")
+        self.assertFinding("ERROR", "`model_context_window` sits inside [agents]", "already sets", "delete this line")
+        self.assertFalse([m for m in self.messages("ERROR") if "Move it above" in m])
 
     def test_agents_written_as_a_value_is_an_error_not_a_crash(self):
         target = self.council.path("config.toml")

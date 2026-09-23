@@ -111,11 +111,16 @@ def check_config(path: Path) -> tuple[list[Finding], dict | None]:
             findings.append(Finding("ERROR", where, f"`{table}` must be a [{table}] table, not a single value"))
             value = {}
         tables[table] = value
-        for key in TOP_LEVEL_KEYS & set(value):
+        for key in sorted(TOP_LEVEL_KEYS & set(value)):
+            if key in data:
+                # Moving it up would define the key twice, which TOML rejects.
+                advice = f"The top level already sets `{key} = {data[key]!r}`, so delete this line."
+            else:
+                advice = "Move it above the first [table] header."
             findings.append(Finding(
                 "ERROR", where,
                 f"`{key}` sits inside [{table}]. In TOML every key after a [table] header belongs "
-                f"to that table, so this key does not set the lead. Move it above the first [table] header.",
+                f"to that table, so this key does not set the lead. {advice}",
             ))
 
     agents = tables["agents"]

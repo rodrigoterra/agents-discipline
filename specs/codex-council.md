@@ -123,6 +123,7 @@ ask mode ─┬─ install/update ─► survey ─► propose diff ─► confi
 - [ ] Given `model_reasoning_effort = "extreme"`, then the checker errors.
 - [ ] Given a `config.toml` that defines `[agents]` twice, then the checker errors.
 - [ ] Given `model = ...` appended below `[agents]`, then the checker errors and explains the TOML trap.
+- [ ] Given a misplaced key that the top level already sets, then the checker says to delete the line, not move it (moving it would define the key twice, which TOML rejects). Found by eval 2.
 - [ ] Given `explorer` or `reviewer` without `sandbox_mode = "read-only"`, then the checker errors.
 - [ ] Given `worker.proposed.toml` in `agents/`, then the checker errors (duplicate role); given `worker.toml.proposed`, it only warns (pending review).
 - [ ] `plugin.json` and `marketplace.json` parse, share version 1.1.0, and every referenced path exists.

@@ -80,7 +80,8 @@ Project: `<repo>/.codex/agents/`, an optional `<repo>/.codex/config.toml`, and
 
 1. **Show before you write.** Present a diff of every file you will create or change, and
    apply only after a yes. This is the user's personal Codex setup; surprises there are costly.
-2. **Back up `config.toml`** as `config.toml.bak-<YYYYMMDD-HHMMSS>` before changing it.
+2. **Back up every existing file you will change** (`config.toml`, `AGENTS.md`) as
+   `<file>.bak-<YYYYMMDD-HHMMSS>` before touching it.
 3. **Merge `assets/codex/config.fragment.toml`** into `config.toml`:
    - Put the top-level keys (`model`, `model_reasoning_effort`, `model_context_window`,
      `model_auto_compact_token_limit`) above the first `[table]` header. In TOML every key
@@ -140,6 +141,9 @@ with the role file as the default answer.
 4. Start `run.md` from the template at the end of this section and append to it as you go:
    every command run, every seat spawned with the exact inputs it received, and anything
    unavailable or skipped. The auditor audits from this record, so a gap in it is a finding.
+5. If the council lives in a custom `$CODEX_HOME` rather than `~/.codex`, prefix every Codex
+   command below with `CODEX_HOME=<that path>`. Otherwise Codex reads `~/.codex`, where the
+   council may be missing, and quietly falls back to its built-in roles.
 
 ### REVIEW mode
 1. **Diff.** `git diff <base>...HEAD > .council/<run-id>/diff.patch`. Ask whether uncommitted
