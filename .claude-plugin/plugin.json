@@ -1,7 +1,7 @@
 {
   "name": "agents-discipline",
-  "description": "Agents Discipline & Good Project Management for Claude Code. Bootstraps CLAUDE.md, AGENTS.md (for OpenAI Codex adversarial review), INDEX.md, specs/, .claude/hooks, rules, output-styles and permission allowlists — the quiet files that keep agents honest.",
-  "version": "1.0.0",
+  "description": "Agents Discipline & Good Project Management for Claude Code. Bootstraps CLAUDE.md, AGENTS.md (for OpenAI Codex adversarial review), INDEX.md, specs/, .claude/hooks, rules, output-styles and permission allowlists — the quiet files that keep agents honest. Also installs and runs a Codex council of native subagents (REVIEW or BUILD mode) with a blind Claude reviewer and a process auditor.",
+  "version": "1.1.0",
   "author": {
     "name": "rodrigoterra"
   },
@@ -16,8 +16,10 @@
     "adversarial-review",
     "specs",
     "hooks",
-    "best-practices"
+    "best-practices",
+    "subagents",
+    "council"
   ],
-  "skills": ["./skills/agents-discipline"],
+  "skills": ["./skills/agents-discipline", "./skills/codex-council"],
   "commands": ["./commands"]
 }

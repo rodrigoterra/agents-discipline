@@ -14,12 +14,13 @@ Set up (or refresh) an **adversarial review** of the current branch by OpenAI Co
    - The exact files Claude touched
    - The acceptance criteria from the relevant `specs/<feature>.md` (if one exists)
    - A directive: *"Codex: assume each claim above is wrong until you've reproduced it. Prioritize counter-examples over agreement."*
-4. **Output the Codex invocation** for the user, e.g.:
+4. **Offer the council.** If a Codex council is installed (`~/.codex/agents/reviewer.toml` or `.codex/agents/reviewer.toml` exists), ask whether to run a council REVIEW instead of a single-agent pass: Codex's explorer and reviewer (specialist on escalation), plus the blind Claude reviewer and the auditor. On yes, hand over to the `codex-council` skill; the steps below are then covered there.
+5. **Output the Codex invocation** for the user, e.g.:
    ```
    codex review --branch <branch> --base <base>
    ```
    (or whatever the user's local Codex CLI expects — ask if unsure).
-5. **Tell the user** how to feed Codex's findings back: either as PR review comments or as a `REVIEW.md` in the branch. Either way, Claude must triage, not just accept.
+6. **Tell the user** how to feed Codex's findings back: either as PR review comments or as a `REVIEW.md` in the branch. Either way, Claude must triage, not just accept.
 
 ## Rules
 - Do **not** soften the language in `AGENTS.md`. Adversarial framing is the whole point.

@@ -29,5 +29,16 @@ build_skill_zip "agents-discipline"   "$ROOT/skills/agents-discipline/SKILL.md"
 build_skill_zip "karpathy-guidelines" "$ROOT/karpathy-guidelines/skills/karpathy-guidelines/SKILL.md"
 build_skill_zip "annotate"            "$ROOT/screenshot-annotator/skills/annotate/SKILL.md"
 
+# 3) Skill zips that bundle files next to SKILL.md (assets/, references/, scripts/).
+build_skill_dir_zip () {
+  local name="$1" src="$2" stage
+  stage="$(mktemp -d)"
+  cp -R "$src" "$stage/$name"
+  find "$stage" \( -name '__pycache__' -o -name '*.pyc' -o -name '.DS_Store' \) -prune -exec rm -rf {} +
+  ( cd "$stage" && zip -r -q -X "$OUT/$name.zip" "$name" )
+  rm -rf "$stage"
+}
+build_skill_dir_zip "codex-council"   "$ROOT/skills/codex-council"
+
 echo "Built into $OUT:"
 ls -1 "$OUT"

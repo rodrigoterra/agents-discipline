@@ -11,8 +11,10 @@ from `.mcpb` bundles and skills from `.md`/`.zip` uploads. These files are built
 | `annotate.zip` | Skills → add skill. **Requires `screenshot-annotator.mcpb`** — it just calls that tool. |
 | `agents-discipline.zip` | Skills → add skill. (The `/agents-*` slash commands are CLI-only and are not included.) |
 | `karpathy-guidelines.zip` | Skills → add skill. |
+| `codex-council.zip` | Skills → add skill. Carries the council files, briefs, reference and checker. In Desktop it prepares install files and briefs; running Codex and the two Claude seats (`council-blind-reviewer`, `council-auditor`) need Claude Code with this plugin, and `/agents-council` is CLI-only. |
 
-Each skill zip contains `<skill-name>/SKILL.md`.
+Each skill zip contains `<skill-name>/SKILL.md`; `codex-council.zip` also carries its
+`assets/`, `references/` and `scripts/` folders.
 
 ## Rebuilding
 

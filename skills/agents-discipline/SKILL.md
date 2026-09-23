@@ -66,6 +66,7 @@ The plugin ships matching slash commands:
 - `/agents-init` — full bootstrap
 - `/agents-spec <feature>` — new spec
 - `/agents-review` — refresh `AGENTS.md` for the current diff and brief Codex
+- `/agents-council` to install, check or run a Codex council of native subagents (see the `codex-council` skill)
 
 ### Bootstrap rules
 - **Never overwrite** an existing `CLAUDE.md`, `AGENTS.md`, or `INDEX.md`. Append a clearly-marked `<!-- agents-discipline -->` section instead, or write the template to `*.proposed.md` and ask.

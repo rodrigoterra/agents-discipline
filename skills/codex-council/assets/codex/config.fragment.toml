@@ -1,0 +1,15 @@
+model = "gpt-6-astra"
+model_reasoning_effort = "high"
+model_context_window = 1000000
+model_auto_compact_token_limit = 900000
+
+[features]
+multi_agent = true
+child_agents_md = true
+
+[agents]
+enabled = true
+default_subagent_model = "gpt-6-astra"
+default_subagent_reasoning_effort = "high"
+max_concurrent_threads_per_session = 6
+max_depth = 2
