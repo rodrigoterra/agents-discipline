@@ -329,5 +329,8 @@ tag's `action.yml`, not assumed from the version number.
 - **macOS notifications on an unsigned build** — the CI smoke's probe fails with
   `UNErrorDomain error 1` on Electron 45. Mac toasts are gone until the build is signed; the
   indicator reports every outcome. (Windows toasts verified shown.)
+- **Size** — the portable exe grew 86 → 117 MB with Electron 45, all upstream (a 57 MB larger
+  Electron binary plus a new 24.6 MB `dxcompiler.dll`). Trimming verified intact in the
+  shipped zip. `dxcompiler.dll` is a candidate to drop, pending a test on a machine with a GPU.
 - **Not upgraded on purpose:** TypeScript 7 and ESLint 10 (risk, no user value);
   electron-builder 26 (changed signing config; only if CI forces it).

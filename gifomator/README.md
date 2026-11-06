@@ -12,7 +12,7 @@ Specs: [`../specs/gifomator-vision.md`](../specs/gifomator-vision.md) ·
 
 | File | What it is |
 |---|---|
-| `Gifomator-<v>-win-x64-portable.exe` | **Single file, ~86 MB.** No install. Settings, Chromium's profile and the error log live in a `Gifomator-data` folder beside the .exe, so it travels on a USB stick. |
+| `Gifomator-<v>-win-x64-portable.exe` | **Single file, ~117 MB.** No install. Settings, Chromium's profile and the error log live in a `Gifomator-data` folder beside the .exe, so it travels on a USB stick. |
 | `Gifomator-<v>-win-x64-setup.exe` | NSIS installer, choose install location |
 | `Gifomator-<v>-win-x64.zip` | Unzip and run |
 | `Gifomator-<v>-mac-arm64.zip` | Unzip, right-click → Open |
@@ -20,6 +20,12 @@ Specs: [`../specs/gifomator-vision.md`](../specs/gifomator-vision.md) ·
 **macOS has no true single-file equivalent** — a GUI app is a `.app` *bundle* (a directory
 the OS presents as one item). The zip is already the closest thing; unzipping gives you one
 draggable `Gifomator.app`.
+
+Sizes grew ~36% from v0.1.5 to v0.2.0, and the cause is upstream, not the build: Electron
+45's own `Gifomator.exe` is 238 MB uncompressed against 181 MB on Electron 33, and Chromium
+now ships a 24.6 MB `dxcompiler.dll` (WebGPU's shader compiler, which Gifomator never uses).
+The trimming still holds — one locale pack, no foreign-platform binaries. Removing
+`dxcompiler.dll` is a possible saving, untested because CI runners have no GPU.
 
 The portable .exe self-extracts to `%TEMP%\Gifomator` on launch. The directory name is
 fixed rather than random, so only the first run pays the extraction cost. That extraction
