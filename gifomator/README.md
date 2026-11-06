@@ -38,7 +38,7 @@ icon.
 
 ## Status
 
-**v0.2.0 — unsigned, internal/dev only.** Not for public distribution. See *Known
+**v0.2.1 — unsigned, internal/dev only.** Not for public distribution. See *Known
 limitations*, which are real and worth reading before you judge the output.
 
 Electron 45. Every build is booted and exercised by a self-test on real Windows and macOS
@@ -218,8 +218,13 @@ capture keys are held while idle; the **bundled** ffmpeg/gifski encode a 1080p c
 through each backend; and, except on macOS, a real 2.5 s screen capture lands as a GIF, with
 Stop/Discard/Esc held only during it and the file on the clipboard afterwards. Exits 0 or 1.
 
-CI runs it on the packaged Windows and macOS apps, and under Xvfb on Linux. A failing
-self-test blocks the release. It exists because every Windows defect so far — no bundled
+It also forces a stop to land while the stream is still being acquired and checks that no
+recorder is left running, and reads the indicator's buttons from its DOM after a capture to
+confirm they are usable again.
+
+CI runs it on the packaged Windows and macOS apps, and under Xvfb on Linux. Publishing is a
+separate job that needs every other job, so a failure anywhere — encoder tests, either
+platform's build, either self-test — means no release. It exists because every Windows defect so far — no bundled
 `ffmpeg.exe`, 320 px window captures, gifski's stack overflow, palettegen's memory wall —
 lived in code no headless unit test could reach.
 

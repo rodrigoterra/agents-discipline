@@ -149,26 +149,37 @@
         lastState = { state, stopKey, mode };
         // A new capture starting cancels any lingering result message.
         if (flashing && state !== 'idle') endFlash();
-        if (!flashing) render(state, stopKey, mode);
+        // The controls ALWAYS follow the real state. Only the label yields to a result
+        // message. Main flashes the result just before it returns to idle, so gating the
+        // controls on the flash left ● and Capture ▾ disabled for the whole 7–12 s
+        // message in v0.2.0 — worst right after a failure, when you want to retry.
+        renderControls(state);
+        if (!flashing) renderLabel(state, stopKey, mode);
       });
 
       function render(state, stopKey, mode) {
+        renderControls(state);
+        renderLabel(state, stopKey, mode);
+      }
+
+      function renderControls(state) {
         current = state;
-        document.body.className = state;
-
-        label.textContent =
-          state === 'recording' ? `Recording — ${pretty(stopKey)}`
-          : state === 'encoding' ? 'Encoding…'
-          : state === 'selecting' ? 'Select an area'
-          : mode ? `Gifomator · ${mode}`
-          : 'Gifomator';
-
         const recording = state === 'recording';
         glyph.innerHTML = recording ? SQUARE : CIRCLE;
         record.title = recording ? 'Stop and save' : 'Start recording';
         // Nothing to start or stop mid-selection or mid-encode.
         record.disabled = state === 'selecting' || state === 'encoding';
         capture.disabled = state !== 'idle';
+      }
+
+      function renderLabel(state, stopKey, mode) {
+        document.body.className = state;
+        label.textContent =
+          state === 'recording' ? `Recording — ${pretty(stopKey)}`
+          : state === 'encoding' ? 'Encoding…'
+          : state === 'selecting' ? 'Select an area'
+          : mode ? `Gifomator · ${mode}`
+          : 'Gifomator';
       }
 
       record.addEventListener('click', () => {

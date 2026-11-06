@@ -18,6 +18,19 @@
       let dimensions = { width: 0, height: 0 };
       let discarded = false;
 
+      // Each start gets a generation. A stop or discard that arrives while getUserMedia
+      // is still pending would otherwise find no recorder, report a failure, and then
+      // the stream would resolve and record forever — on macOS with the screen-recording
+      // indicator lit. After every await, a stale generation abandons its stream.
+      let generation = 0;
+      let stopRequested = false;
+
+      function abandon(s) {
+        try {
+          if (s) s.getTracks().forEach((t) => t.stop());
+        } catch {}
+      }
+
       // vp9 is preferred for size, but MediaRecorder support varies by platform and
       // GPU. Constructing with an unsupported type throws, so probe first.
       const MIME_CANDIDATES = [
@@ -50,12 +63,15 @@
       }
 
       window.gifomator.onStart(async ({ sourceId, maxWidth, maxHeight }) => {
+        const mine = ++generation;
+        stopRequested = false;
         discarded = false;
         chunks = [];
         dimensions = { width: 0, height: 0 };
 
+        let acquired;
         try {
-          stream = await navigator.mediaDevices.getUserMedia({
+          acquired = await navigator.mediaDevices.getUserMedia({
             audio: false,
             video: {
               mandatory: {
@@ -70,9 +86,18 @@
             },
           });
         } catch (err) {
-          fail('getUserMedia failed', err);
+          // A superseded attempt's failure is not news; only the current one reports.
+          if (mine === generation && !stopRequested) fail('getUserMedia failed', err);
           return;
         }
+
+        if (mine !== generation || stopRequested) {
+          // Stopped, discarded or restarted while the stream was being acquired. Main
+          // has already been told (onStop reports "no active recording"); just release.
+          abandon(acquired);
+          return;
+        }
+        stream = acquired;
 
         // The track's own settings are the only trustworthy source of the captured
         // resolution. Deriving it from a picker thumbnail produced 320px-wide GIFs.
@@ -123,6 +148,7 @@
       });
 
       window.gifomator.onStop(() => {
+        stopRequested = true;
         if (recorder && recorder.state !== 'inactive') {
           recorder.stop();
         } else {
@@ -133,6 +159,7 @@
       });
 
       window.gifomator.onDiscard(() => {
+        stopRequested = true;
         discarded = true;
         if (recorder && recorder.state !== 'inactive') recorder.stop();
       });

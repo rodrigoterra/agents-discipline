@@ -5,7 +5,7 @@ including the things that turned out to be wrong. Written so the *reasoning* sur
 just the diffs.
 
 Sessions: **2026-08-15** (spec + build), **2026-08-16** (release delivery), **2026-08-17**
-(field fixes from Windows testing) and **2026-11-06** (enhancement pass, v0.2.0).
+(field fixes from Windows testing) and **2026-11-06** (enhancement pass, v0.2.0–0.2.1).
 Branch: `claude/gifomator-vision-env-9eb43i`.
 
 ---
@@ -278,6 +278,27 @@ release step now also refuses to `--clobber` a published version built from a di
 commit. And `upload-artifact@v5` turned out to still run on Node 20 — checked against each
 tag's `action.yml`, not assumed from the version number.
 
+**v0.2.1 — two bugs in v0.2.0, found by review before anyone hit them.** An independent
+review of the finished release traced two defects. Each got a smoke check that was run
+against the shipped code *first* and seen to fail, then fixed and seen to pass:
+
+- **The indicator's ● and Capture ▾ were dead for 7–12 s after every capture.** Main flashed
+  the result just before returning to idle, and the renderer skipped *all* rendering while a
+  result message showed — including the buttons' `disabled` flags. Worst after a failure,
+  exactly when you would retry. The smoke now reads both buttons from the indicator's DOM
+  after a capture: `[true, true]` on v0.2.0, `[false, false]` fixed.
+- **A stop during stream acquisition leaked a running recorder.** A stop arriving while
+  `getUserMedia` was pending found no recorder, reported failure — then the stream resolved
+  and recorded forever (on macOS, with the screen-recording light on). A generation token
+  abandons stale streams. The smoke provokes the race deterministically (IPC is ordered):
+  the pre-fix recorder ends in state `recording`; fixed, `none`.
+
+And the release gate was weaker than the README claimed. Publishing ran inside each build
+leg with `fail-fast: false`, so a Windows smoke failure could still let macOS publish a
+release with no Windows build, and the encoder tests gated nothing. Publishing is now one
+job that `needs` every other job. (`download-artifact` v5 and v6 turned out to be Node 20
+too — v7 is the first Node 24 major.)
+
 > **Learning.** An audit of your own shipped code finds what feature work hides. The worst
 > defect of the session — stealing Save As from every app — was invisible from inside
 > Gifomator, because Gifomator itself worked perfectly.
@@ -305,10 +326,12 @@ tag's `action.yml`, not assumed from the version number.
 10. **Never throw away stderr.** Two encoder crashes were diagnosed by inference because the
     toast showed only an exit code.
 11. **A global hotkey is a tax on every other app.** Hold it only while it means something.
-12. **Give the untestable layer a self-test in the shipped binary.** `--smoke` on real runners
+12. **Prove a check can fail before trusting it to pass.** Both v0.2.1 checks were run
+    against the broken code first; a check you have only ever seen green proves nothing.
+13. **Give the untestable layer a self-test in the shipped binary.** `--smoke` on real runners
     found nothing broken on Electron 33 — and that baseline is what made the Electron 45
     upgrade a comparison instead of a hope.
-13. **Read the upgrade notes against your own API surface.** Twelve Electron majors reduced to
+14. **Read the upgrade notes against your own API surface.** Twelve Electron majors reduced to
     three relevant changes, one of which was a fix you could not have built yourself.
 
 ## Open at time of writing

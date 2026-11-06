@@ -20,9 +20,10 @@ defaults:
   run:
     working-directory: gifomator
 
-# checkout@v5 / setup-node@v5 / upload-artifact@v6 are the first majors of each that
-# run on Node 24 (verified against each tag's action.yml — upload-artifact@v5 is still
-# node20). The v4s ran on a deprecated Node 20 runtime.
+# checkout@v5 / setup-node@v5 / upload-artifact@v6 / download-artifact@v7 are the first
+# majors of each that run on Node 24 — verified against each tag's action.yml, because the
+# version numbers do not line up: upload-artifact@v5 and download-artifact@v5–v6 are still
+# node20.
 
 jobs:
   # The encoder is the only layer verifiable without a GUI, so it gets its own
@@ -60,9 +61,6 @@ jobs:
 
   build:
     name: build ${{ matrix.os }}
-    # Needed so the release step can create a release and upload assets.
-    permissions:
-      contents: write
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -119,56 +117,69 @@ jobs:
           cat "$OUT"
           node -e "process.exit(require(process.argv[1]).ok ? 0 : 1)" "$OUT"
 
-      # Actions artifacts require a signed-in GitHub session to download, which makes
-      # them useless for handing a build to someone on a phone, in Slack, or on another
+  # Publishing is ONE job that needs every other job. Earlier it ran inside each build leg,
+  # so with fail-fast off a Windows smoke failure could still let the macOS leg publish a
+  # release with no Windows build in it — and the encoder unit tests gated nothing. Now a
+  # failure anywhere (core tests, either platform's build, either smoke test) means no
+  # release.
+  publish:
+    name: publish release
+    needs: [core, build]
+    if: startsWith(github.ref, 'refs/tags/gifomator-v') || (github.event_name == 'workflow_dispatch' && format('{0}', inputs.release) == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v7
+        with:
+          # Workspace-relative (action inputs ignore defaults.run.working-directory).
+          path: gifomator/release
+          merge-multiple: true
+      # Actions artifacts need a signed-in GitHub session to download, which makes them
+      # useless for handing a build to someone on a phone, in Slack, or on another
       # account. Release assets are plain public URLs.
-      #
-      # Runs on a tag push, or a manual dispatch with release=true. `gh release create`
-      # creates the tag itself, so no separate tag push is needed. Uses the preinstalled
-      # gh CLI rather than a third-party action. format() normalises the input because
-      # an API-triggered dispatch may deliver it as the string "true".
-      - name: Attach build to release
-        if: startsWith(github.ref, 'refs/tags/gifomator-v') || (github.event_name == 'workflow_dispatch' && format('{0}', inputs.release) == 'true')
-        shell: bash
+      - name: Publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -eu
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION=$(node -p "require('./package.json').version")
-            TAG="gifomator-v${VERSION}"
+            TAG="gifomator-v$(node -p "require('./package.json').version")"
           else
             TAG="${{ github.ref_name }}"
           fi
           echo "releasing as $TAG"
 
           # Refuse to overwrite a release built from a different commit. Without this,
-          # dispatching without bumping package.json would silently --clobber the
-          # assets of an already-published version.
+          # releasing without bumping package.json would silently --clobber the assets of
+          # an already-published version.
           EXISTING=$(gh release view "$TAG" --json targetCommitish -q .targetCommitish 2>/dev/null || true)
           if [ -n "$EXISTING" ] && [ "$EXISTING" != "${{ github.sha }}" ]; then
             echo "::error::$TAG already exists for commit $EXISTING. Bump gifomator/package.json version before releasing."
             exit 1
           fi
 
-          # Both matrix legs race to create the release; whichever loses just uploads.
-          gh release create "$TAG" \
-            --target "${{ github.sha }}" \
-            --title "Gifomator $TAG" \
-            --notes "Unsigned development build — internal/dev only.
+          if [ -z "$EXISTING" ]; then
+            gh release create "$TAG" \
+              --target "${{ github.sha }}" \
+              --title "Gifomator $TAG" \
+              --notes "Unsigned development build — internal/dev only. Every asset here passed the packaged-app self-test on a real Windows and macOS runner before publishing.
 
           **Windows:** \`-portable.exe\` is a single file, no install — settings and data live in a \`Gifomator-data\` folder beside it. \`-setup.exe\` installs; the \`.zip\` unzips and runs. SmartScreen will warn (unsigned by design) — More info → Run anyway. The app has **no window**; it lives in the system tray and the floating indicator.
 
-          **macOS:** download the \`.dmg\` or \`-mac-\` zip, right-click → Open. Screen Recording permission is required.
+          **macOS:** download the \`.dmg\` or \`-mac-\` zip, right-click → Open. Screen Recording permission is required. System notifications do not appear for this unsigned build; results show on the floating indicator.
 
-          Review checklist: \`gifomator/REVIEW-WINDOWS.md\`." \
-            || echo "release already exists, uploading to it"
+          Review checklist: \`gifomator/REVIEW-WINDOWS.md\`."
+          fi
 
-          # Path is relative to gifomator/ — defaults.run.working-directory applies to
-          # `run:` steps (unlike actions/upload-artifact, whose paths are workspace-relative).
-          # nullglob so the macOS leg, which produces no .exe, does not upload a literal
-          # "release/*.exe".
           shopt -s nullglob
           ASSETS=(release/*.zip release/*.exe release/*.dmg)
+          if [ "${#ASSETS[@]}" -eq 0 ]; then
+            echo "::error::no release assets were downloaded"
+            exit 1
+          fi
           printf 'uploading: %s\n' "${ASSETS[@]}"
           gh release upload "$TAG" "${ASSETS[@]}" --clobber

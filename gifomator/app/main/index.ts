@@ -751,6 +751,28 @@ function registerHotkeys(): void {
  *     with stop/discard/Esc held only while recording.
  * macOS skips the live capture: it needs a Screen Recording grant a runner cannot give.
  */
+/** Reads the indicator buttons' disabled state straight from its DOM. */
+async function readIndicatorControls(): Promise<{ recordDisabled: boolean; captureDisabled: boolean } | string> {
+  if (!indicator || indicator.isDestroyed()) return 'indicator not open';
+  try {
+    const [recordDisabled, captureDisabled] = (await indicator.webContents.executeJavaScript(
+      '[document.getElementById("record").disabled, document.getElementById("capture").disabled]',
+    )) as [boolean, boolean];
+    return { recordDisabled, captureDisabled };
+  } catch (err) {
+    return `read failed: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+function controlsEnabled(value: unknown): boolean {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { recordDisabled: boolean }).recordDisabled === false &&
+    (value as { captureDisabled: boolean }).captureDisabled === false
+  );
+}
+
 async function runSmoke(): Promise<void> {
   const outArg = process.argv.find((a) => a.startsWith('--smoke-out='));
   const outPath = outArg ? outArg.slice('--smoke-out='.length) : path.join(tmpdir(), 'gifomator-smoke.json');
@@ -807,6 +829,8 @@ async function runSmoke(): Promise<void> {
       });
       probe.show();
     });
+
+    checks.indicatorControlsIdle = await readIndicatorControls();
 
     const idleHeld = [...heldBindings.keys()];
     checks.idleHeldBindings = idleHeld;
@@ -900,13 +924,47 @@ async function runSmoke(): Promise<void> {
           checks.clipboardFileReference = `read failed: ${err instanceof Error ? err.message : String(err)}`;
         }
       }
+      // The indicator's ● and Capture ▾ must be usable again the moment a capture ends —
+      // including while its result message is still showing. In v0.2.0 they stayed
+      // disabled for the whole 7–12 s message, worst right after a failure.
+      checks.indicatorControlsAfterCapture = await readIndicatorControls();
+
       // Back at idle the scoped keys must be released again, or Save As stays broken
       // after the first capture even though startup looked fine.
       const afterHeld = [...heldBindings.keys()];
       checks.afterCaptureHeldBindings = afterHeld;
       checks.scopedKeysReleased = !afterHeld.some((k) => scopedKeys.includes(k));
       checks.stopHeldWhileRecording = recordingHeld.includes(settings.hotkeys.stop) || failedBindings.has(settings.hotkeys.stop);
-      captureOk = result.ok && checks.scopedKeysReleased === true && clipboardOk;
+      // Stop before the stream exists: start, then stop at once, so the stop lands while
+      // getUserMedia is still pending. Main must recover to idle, and the stream that
+      // resolves afterwards must be released — before the generation token it kept
+      // recording forever (on macOS, with the screen-recording indicator lit).
+      const raceOutcome = new Promise<CaptureOutcome>((resolve) => {
+        captureWaiter = resolve;
+      });
+      beginRecording(source.id, { maxWidth: 1280, maxHeight: 720 });
+      stopRecording();
+      const race = await Promise.race([
+        raceOutcome,
+        sleep(30_000).then((): CaptureOutcome => ({ ok: false, stage: 'smoke', error: 'no outcome within 30s' })),
+      ]);
+      captureWaiter = null;
+      await sleep(3_000); // let the pending getUserMedia resolve
+      const recorderState = recorder
+        ? await recorder.webContents
+            .executeJavaScript('recorder ? recorder.state : "none"')
+            .catch((err: unknown) => `read failed: ${String(err)}`)
+        : 'no recorder window';
+      checks.stopBeforeStream = { outcome: race, appState: state, recorderState };
+      const noLeak = state === 'idle' && recorderState !== 'recording';
+      checks.stopBeforeStreamNoLeak = noLeak;
+
+      captureOk =
+        result.ok &&
+        checks.scopedKeysReleased === true &&
+        clipboardOk &&
+        controlsEnabled(checks.indicatorControlsAfterCapture) &&
+        noLeak;
     } else {
       checks.capture = { skipped: 'live capture needs a Screen Recording grant a CI runner cannot give' };
     }
@@ -914,6 +972,7 @@ async function runSmoke(): Promise<void> {
     const ok =
       checks.tray === true &&
       checks.indicator === true &&
+      controlsEnabled(checks.indicatorControlsIdle) &&
       checks.hotkeyScopingOk === true &&
       encodeDefault.ok &&
       encodeFfmpeg.ok &&
