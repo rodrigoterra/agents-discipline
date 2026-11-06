@@ -4,7 +4,8 @@ A chronological record of how Gifomator went from an idea to a downloadable Wind
 including the things that turned out to be wrong. Written so the *reasoning* survives, not
 just the diffs.
 
-Sessions: **2026-08-15** (spec + build) and **2026-08-16** (release delivery).
+Sessions: **2026-08-15** (spec + build), **2026-08-16** (release delivery), **2026-08-17**
+(field fixes from Windows testing) and **2026-11-06** (enhancement pass, v0.2.0).
 Branch: `claude/gifomator-vision-env-9eb43i`.
 
 ---
@@ -198,6 +199,89 @@ a known-public asset showed the environment was fine and the method was wrong.
 > **Learning.** "It builds" is not "it's delivered." And when a check fails, test the check
 > against a known-good control before believing it.
 
+## 8. Field fixes — v0.1.1 to v0.1.5 (2026-08-17)
+
+Testing on a real Windows machine surfaced defects that no headless test could have reached.
+Every one lived in `app/` or in how the bundled binaries met real data:
+
+| Symptom reported | Cause | Fix |
+|---|---|---|
+| Window capture came out 320×160 | The picker passed its **thumbnail's** width (`thumbnailSize: 320`) as the source width; Chromium also silently caps desktop capture at 1280×720 without explicit `maxWidth` | Renderer reads real size from `track.getSettings()`; explicit maxima; window/region emitted 1:1 |
+| No tray icon | Electron's `nativeImage` does not reliably rasterise SVG data URLs on Windows | Icon built from a raw BGRA bitmap |
+| `gifski exited with code 3221225725` | `0xC00000FD` stack overflow on the larger 1:1 frames; and the ffmpeg fallback only ran when gifski was *absent*, never when it *crashed* | Crash now degrades to ffmpeg; explicitly requested backends never substitute |
+| Vertical lines in the GIF | ffmpeg's default ordered `bayer` dither, exposed because the fallback was doing the encoding | `bayer_scale=5` — SSIM 0.858 → 0.999, files *smaller* |
+| `palettegen/paletteuse exited with code 1` | Single-pass `palettegen` buffers every frame: ~2 GB at 2560×1440 1:1 | Two-pass palette from a 640 px, 2 fps sample; encode streams |
+
+Also added: a dedicated stop hotkey, a floating indicator with capture controls excluded from
+captures, a portable single-file build (dropping 107 MB of foreign-platform dead weight on
+the way), and an error log linked from every failure toast.
+
+> **Learning.** Two encoder crashes in a row came from the same change — removing the width
+> cap for 1:1 — and both were first diagnosed by inference because the toast showed only an
+> exit code. Throwing away stderr is throwing away the evidence.
+
+## 9. Enhancement pass — v0.2.0 (2026-11-06)
+
+Asked to "check for enhancements", nothing new had arrived from anyone: the branch was in sync,
+and no issues were open. So the pass was an audit, ranked by user impact. An advisor review
+before starting reordered it — the top item was not on the original list.
+
+**Gifomator was breaking Save As system-wide.** The stop key (`Ctrl+Shift+S`) and discard key
+(`Ctrl+.`) were registered globally at startup. On Windows, `RegisterHotKey` consumes the
+keystroke before the foreground app sees it — so while Gifomator ran, Save As stopped working
+in VS Code, Office and browsers, and VS Code's Quick Fix went dead. The fix generalised the
+pattern already used for `Esc`: a pure `activeHotkeys(state)` table, applied on every state
+change, holds Stop/Discard/Esc only during a capture.
+
+**Silent failures that leave nothing landed.** `new MediaRecorder(stream, {vp9})` had no
+try/catch; if it threw, main stayed in `recording`, and a stop left it in `encoding` forever.
+A zero-byte capture only reached `console.error` — invisible in a packaged app. Every failure
+now goes through one `reportFailure` that logs, notifies, flashes the indicator and returns to
+idle, backed by a 30 s stop watchdog and a `render-process-gone` handler.
+
+**A false claim in the README.** "Leaves nothing in AppData" was untrue for the portable build:
+Chromium's profile and the error log still went to `%APPDATA%`. `userData` is now redirected
+beside the .exe before `ready`, and the README states the one remaining exception (the
+`%TEMP%` extraction cache).
+
+**The app layer finally gets a machine check.** A `--smoke` flag boots the packaged app and
+checks the tray, indicator, hotkey scoping (held while recording, released after), both bundled
+encoders at 1:1 1080p, and — except on macOS — a real 2.5 s screen capture with a clipboard
+read-back. CI runs it on Windows and macOS runners and under Xvfb on Linux; failure blocks the
+release. Its first Windows run on Electron 33 gave the first machine-verified Windows capture
+in the project's history — and showed gifski does **not** stack-overflow at 1080p, so the
+user's crash needs larger frames.
+
+**Electron 33 → 45**, gated by that smoke. `electronjs.org` is egress-blocked, so the
+breaking-changes doc was read from raw GitHub and grepped against every API the app touches;
+type-checking against Electron 45's declarations then flagged exactly the two predicted breaks
+and nothing else. Three changes mattered:
+
+- **Clipboard (44.0)** — `writeBuffer` removed; and `text/uri-list` now maps to `CF_HDROP`.
+  This *fixed* something: Electron never exposed `CF_HDROP` before, so Windows only ever got
+  the path as text. The GIF now goes on the clipboard as a real file, verified by reading it
+  back.
+- **Capture (45.0)** — `chromeMediaSource: 'desktop'` now rejects only WebContents ids;
+  screen/window ids still work. Verified by the live-capture smoke, not just by reading.
+- **macOS notifications (42.0)** — UNNotification refuses unsigned apps. Every outcome is now
+  also shown on the floating indicator. The smoke's probe on the CI Mac build then failed
+  with `UNErrorDomain error 1` — the prediction held, and the fallback was already in place.
+
+On real runners, Electron 45 passed everywhere. Windows verified a real `CF_HDROP` file
+reference on the clipboard after a live capture — the first time Gifomator has ever put a
+file, not a path, on the Windows clipboard.
+
+**Environment surprises.** Pushes from this session no longer trigger Actions at all — no run
+since August despite pushes landing — so verification moved to manual dispatch, and releasing
+became an explicit `release: true` input instead of a side effect of every dispatch. The
+release step now also refuses to `--clobber` a published version built from a different
+commit. And `upload-artifact@v5` turned out to still run on Node 20 — checked against each
+tag's `action.yml`, not assumed from the version number.
+
+> **Learning.** An audit of your own shipped code finds what feature work hides. The worst
+> defect of the session — stealing Save As from every app — was invisible from inside
+> Gifomator, because Gifomator itself worked perfectly.
+
 ---
 
 ## Distilled learnings
@@ -218,6 +302,14 @@ a known-public asset showed the environment was fine and the method was wrong.
    test. The 38 MB result is a product problem, and it is recorded as one.
 8. **Check whether the target measures the promise.** `< 2 s` was wrong in *kind*, not degree.
 9. **Deliverability is part of the deliverable.** A green build nobody can download is not done.
+10. **Never throw away stderr.** Two encoder crashes were diagnosed by inference because the
+    toast showed only an exit code.
+11. **A global hotkey is a tax on every other app.** Hold it only while it means something.
+12. **Give the untestable layer a self-test in the shipped binary.** `--smoke` on real runners
+    found nothing broken on Electron 33 — and that baseline is what made the Electron 45
+    upgrade a comparison instead of a hope.
+13. **Read the upgrade notes against your own API surface.** Twelve Electron majors reduced to
+    three relevant changes, one of which was a fix you could not have built yourself.
 
 ## Open at time of writing
 
@@ -229,5 +321,13 @@ a known-public asset showed the environment was fine and the method was wrong.
   `GIFOMATOR_REQUIRE_LGPL=1` makes it a hard failure.
 - **`desktopCapturer` vs native macOS window-edge capture** — still the highest-risk unknown,
   and the Electron decision rests on it.
-- **Everything in `app/` is unexercised on real hardware** — tray, hotkeys, overlays, picker,
-  clipboard. Awaiting the Windows review.
+- **Still needs a person** — the region overlay, window picker, mixed-DPI multi-monitor,
+  indicator button clicks on a non-activating window, and whether a Slack paste animates.
+  The smoke covers boot, hotkeys, encoders, full-screen capture and the clipboard; not these.
+- **gifski's Windows stack overflow** — did not reproduce at 1080p on CI; needs the user's
+  window size from a `gifomator-last-error.log` to pin down. The ffmpeg fallback covers it.
+- **macOS notifications on an unsigned build** — the CI smoke's probe fails with
+  `UNErrorDomain error 1` on Electron 45. Mac toasts are gone until the build is signed; the
+  indicator reports every outcome. (Windows toasts verified shown.)
+- **Not upgraded on purpose:** TypeScript 7 and ESLint 10 (risk, no user value);
+  electron-builder 26 (changed signing config; only if CI forces it).

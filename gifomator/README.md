@@ -12,7 +12,7 @@ Specs: [`../specs/gifomator-vision.md`](../specs/gifomator-vision.md) ·
 
 | File | What it is |
 |---|---|
-| `Gifomator-<v>-win-x64-portable.exe` | **Single file, ~80 MB.** No install. Settings are written next to the .exe, so it travels on a USB stick and leaves nothing behind. |
+| `Gifomator-<v>-win-x64-portable.exe` | **Single file, ~86 MB.** No install. Settings, Chromium's profile and the error log live in a `Gifomator-data` folder beside the .exe, so it travels on a USB stick. |
 | `Gifomator-<v>-win-x64-setup.exe` | NSIS installer, choose install location |
 | `Gifomator-<v>-win-x64.zip` | Unzip and run |
 | `Gifomator-<v>-mac-arm64.zip` | Unzip, right-click → Open |
@@ -22,12 +22,21 @@ the OS presents as one item). The zip is already the closest thing; unzipping gi
 draggable `Gifomator.app`.
 
 The portable .exe self-extracts to `%TEMP%\Gifomator` on launch. The directory name is
-fixed rather than random, so only the first run pays the extraction cost.
+fixed rather than random, so only the first run pays the extraction cost. That extraction
+cache is the one thing a portable run leaves outside its own folder. If the folder beside
+the .exe is not writable (a read-only share, say), data falls back to the normal
+per-user location.
+
+Launching a second copy opens Settings on the running one instead of adding a second tray
+icon.
 
 ## Status
 
-**v0.1.0 — unsigned, internal/dev only.** Not for public distribution. See *Known
+**v0.2.0 — unsigned, internal/dev only.** Not for public distribution. See *Known
 limitations*, which are real and worth reading before you judge the output.
+
+Electron 45. Every build is booted and exercised by a self-test on real Windows and macOS
+runners before it can be released — see *Self-test*.
 
 ## Install and run
 
@@ -45,8 +54,13 @@ npm start
 | Capture region | `Cmd+Shift+9` | `Ctrl+Shift+9` |
 | Capture window | `Cmd+Shift+0` | `Ctrl+Shift+0` |
 | Capture full screen | `Cmd+Shift+8` | `Ctrl+Shift+8` |
-| Stop and save | press the capture hotkey again, or `Esc` | same |
+| Stop and save | `Cmd+Shift+S`, re-press the capture key, or `Esc` | `Ctrl+Shift+S`, same |
 | Discard | `Cmd+.` | `Ctrl+.` |
+
+**Stop, Discard and `Esc` are only held while a capture is running.** A global hotkey on
+Windows swallows the key from every other application, so holding them permanently (as
+v0.1.2–0.1.5 did) broke Save As and VS Code's Quick Fix everywhere. The three capture keys
+are held at all times — they are the app's entry points.
 
 All rebindable in Settings. `Esc` is always the gentle exit — it stops and saves a
 recording, and cancels a *selection*, but never destroys a completed recording.
@@ -108,6 +122,11 @@ recording / encoding), and carries two controls:
 - **Capture ▾** — pick Region / Window / Full screen; choosing one starts that capture.
 - **● / ■** — start the last-used mode, or stop and save.
 
+When a GIF lands, the bar turns green with its size — **click it to reveal the file**. A
+failure turns it red — click to open the log. This is deliberate redundancy with the system
+notification: macOS (Electron 42+) refuses notifications from unsigned apps, and this build
+is unsigned, so the bar is the channel that always works.
+
 It is **excluded from captures** via `setContentProtection` — `WDA_EXCLUDEFROMCAPTURE` on
 Windows, window sharing type on macOS — so it never appears in your GIFs, including captures
 of the screen it sits on. Drag it by the label; toggle it from the tray menu.
@@ -149,9 +168,6 @@ Encode time is the real cost: roughly 8–24 s for 10 s of 720p, dominated by qu
 Because the app saves silently and puts the result on your clipboard, you are not *blocked*
 during encoding — but the gap between stopping and the toast is real.
 
-Because the app saves silently and puts the result on your clipboard, you are not
-*blocked* during encoding — but the gap between stopping and the toast is real.
-
 **The bundled ffmpeg is a GPL build.** `@ffmpeg-installer/ffmpeg` declares LGPL-2.1 in its
 manifest but ships a binary configured `--enable-gpl --enable-version3` (and dates from
 2018). `test/licence.test.mjs` parses the binary's own configuration and currently
@@ -163,9 +179,43 @@ the purpose of having it.
 **macOS Screen Recording permission is mandatory**, and because this build is unsigned the
 grant can be invalidated whenever the binary changes — expect to re-grant after updates.
 
-**Untested on real hardware.** Everything here was built and verified in a headless Linux
-container. The encoder is genuinely tested; the tray, hotkeys, overlays, window picker and
-clipboard behaviour have never been exercised on Windows or macOS.
+**macOS notifications do not appear.** Since Electron 42 they go through UNNotification,
+which requires a code-signed app. The self-test's probe on the CI Mac build fails with
+`UNErrorDomain error 1` (notifications not allowed). On a runner that cannot be told apart
+from "permission never granted", but Electron documents the unsigned case, so treat Mac
+toasts as gone until the build is signed. Every result is shown on the floating indicator
+instead — keep it open on macOS. Windows toasts are verified working.
+
+**What only a person can verify.** The self-test covers boot, hotkey scoping, the bundled
+encoders and — on Windows — a real full-screen capture with a clipboard read-back. It does
+**not** cover the region overlay, the window picker, mixed-DPI multi-monitor setups, clicking
+the indicator's buttons, or whether a paste into Slack animates. Those still need a human —
+see `REVIEW-WINDOWS.md`.
+
+## Clipboard
+
+After a capture, the GIF is on the clipboard as a **real file** (`CF_HDROP` on Windows,
+`NSFilenamesPboardType` on macOS) plus its path as text — in one atomic write. Pasting into
+Slack, Explorer or Finder pastes the animated file; pasting into a terminal pastes the path.
+
+Before Electron 44 there was no way to write `CF_HDROP` from Electron, so Windows only ever
+received the path as text.
+
+## Self-test
+
+```bash
+Gifomator.exe --smoke --smoke-out=report.json     # or the .app's binary on macOS
+```
+
+Boots the app, then checks and reports as JSON: the tray and indicator come up; only the
+capture keys are held while idle; the **bundled** ffmpeg/gifski encode a 1080p clip at 1:1
+through each backend; and, except on macOS, a real 2.5 s screen capture lands as a GIF, with
+Stop/Discard/Esc held only during it and the file on the clipboard afterwards. Exits 0 or 1.
+
+CI runs it on the packaged Windows and macOS apps, and under Xvfb on Linux. A failing
+self-test blocks the release. It exists because every Windows defect so far — no bundled
+`ffmpeg.exe`, 320 px window captures, gifski's stack overflow, palettegen's memory wall —
+lived in code no headless unit test could reach.
 
 ## Licences
 

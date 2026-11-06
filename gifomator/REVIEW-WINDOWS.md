@@ -1,28 +1,37 @@
 # Windows review checklist
 
-Everything in Gifomator was built and verified in a headless Linux container. The encoder
-is genuinely tested (24 tests, green). **Nothing below has ever run on Windows.** This is
-the list of things only you can check.
+## Already machine-verified on a real Windows runner (v0.2.0)
+
+Every release now passes a self-test on the packaged Windows app (`--smoke`, see the
+README). You do **not** need to re-check these:
+
+- the app boots; tray and floating indicator appear
+- only `Ctrl+Shift+8/9/0` are held while idle; Stop/Discard/Esc are held only during a
+  capture and released afterwards
+- the bundled ffmpeg and gifski encode a 1920×1080 clip at 1:1 through both backends
+- a real full-screen capture lands as a GIF, and the GIF is on the clipboard as a file
+
+**Everything below is what a runner cannot check** — it needs eyes, hands, or a second
+monitor.
 
 ## Getting it
 
-1. Open the [Gifomator workflow runs](https://github.com/rodrigoterra/agents-discipline/actions/workflows/gifomator.yml).
-2. Open the newest green run on `claude/gifomator-vision-env-9eb43i`.
-3. Download the **`gifomator-windows`** artifact and unzip it.
-4. Unzip the inner `Gifomator-0.1.0-win-x64.zip`, run `Gifomator.exe`.
+Download the newest `-portable.exe` from the
+[Releases page](https://github.com/rodrigoterra/agents-discipline/releases) and run it.
+No install.
 
 **SmartScreen will warn you** — the build is unsigned by design (v1 is internal/dev only).
 "More info" → "Run anyway".
 
-Gifomator has **no window on launch**. It lives in the system tray, near the clock. If
-nothing appears there, that is finding #1 — write it down.
+Gifomator has **no main window**. It lives in the system tray and in a small floating bar
+near the top-right of the screen.
 
 ## Fast path — the whole product in 15 seconds
 
 1. Press `Ctrl+Shift+9`.
 2. Drag a box over something moving.
 3. Press `Ctrl+Shift+9` again (or `Esc`) to stop.
-4. Wait for the toast.
+4. Wait for the floating bar to turn green (`Saved … · copied`).
 5. Paste into Slack.
 
 If that worked, the product works. Everything below is detail.
@@ -43,8 +52,21 @@ If that worked, the product works. Everything below is detail.
 - [ ] `Ctrl+.` while recording discards; no file appears
 - [ ] `Ctrl+.` during encoding aborts; no partial file left behind
 
+### New in v0.2.0
+- [ ] **Save As works in other apps while Gifomator is idle** — `Ctrl+Shift+S` in VS Code,
+      Word or a browser opens their dialog, not a Gifomator stop. (v0.1.2–0.1.5 stole it.)
+- [ ] `Ctrl+.` (VS Code Quick Fix) works while Gifomator is idle
+- [ ] `Ctrl+Shift+S` **does** stop and save while recording
+- [ ] The floating bar turns green with the size when a GIF lands; **clicking it opens the
+      folder with the file selected**
+- [ ] A failed capture turns the bar red; clicking it opens `gifomator-last-error.log`
+- [ ] Toasts are headed **"Gifomator"**, not `electron.app.Gifomator`
+- [ ] Launching the portable .exe a second time opens Settings instead of a second tray icon
+- [ ] A `Gifomator-data` folder appears **beside the portable .exe**, holding the settings
+
 ### Output
 - [ ] GIF lands in Downloads (or your configured folder) with no dialog
+- [ ] Pasting into **Explorer** pastes the GIF file itself (new: real `CF_HDROP`)
 - [ ] The GIF **animates** when pasted into Slack — a static image here means the clipboard
       flavour is wrong on Windows, which is the single most likely defect in this build
 - [ ] Pasting into a terminal gives the file path
@@ -70,7 +92,7 @@ Not bugs — known and recorded.
 |---|---|
 | SmartScreen warning | Unsigned by design for v1 |
 | Encoding takes seconds, not instant | Measured 8–24 s for 10 s at 720p; quantization is ~87% of it |
-| **Files are large** | `balanced` hit 37.8 MB on the stress fixture. Try `small` first. |
+| Large files on busy content | Dark UI is small (6 s `balanced` ≈ 234 KB); gradient-heavy content is much larger. Try `small` first. |
 | Tray icon is a plain circle | Placeholder; grey idle, red recording |
 
 **The file size issue is the most important thing to judge.** The presets are provisional
