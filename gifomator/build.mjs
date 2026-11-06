@@ -29,6 +29,13 @@ await esbuild.build({
   outfile: 'dist/core/index.js',
 });
 
+// Pure app policy, bundled on its own so tests can load it with no Electron present.
+await esbuild.build({
+  ...common,
+  entryPoints: ['app/main/hotkey-policy.ts'],
+  outfile: 'dist/policy/hotkey-policy.js',
+});
+
 await esbuild.build({
   ...common,
   entryPoints: ['app/main/index.ts'],

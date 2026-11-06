@@ -47,20 +47,37 @@ function defaults(): Settings {
   };
 }
 
+const SETTINGS_FILE = 'gifomator-settings.json';
+
 /**
- * Where settings live.
+ * Where settings live: Electron's userData.
  *
- * electron-builder's portable target sets PORTABLE_EXECUTABLE_DIR to the folder the
- * .exe was launched from. Writing there keeps a portable build genuinely portable —
- * settings travel with the executable on a USB stick and nothing is left in AppData.
- * Everything else uses the normal per-user location.
+ * For the portable build, index.ts redirects userData to a Gifomator-data folder beside
+ * the .exe before the app starts, so settings travel with the executable along with
+ * Chromium's own profile data. Everything else uses the normal per-user location.
  */
-function settingsDir(): string {
-  return process.env.PORTABLE_EXECUTABLE_DIR || app.getPath('userData');
+function settingsPath(): string {
+  return path.join(app.getPath('userData'), SETTINGS_FILE);
 }
 
-function settingsPath(): string {
-  return path.join(settingsDir(), 'gifomator-settings.json');
+/**
+ * v0.1.4–0.1.5 portable builds wrote settings directly beside the .exe. Read that file
+ * if the new location is empty so an upgrade does not silently reset the user's
+ * hotkeys and output folder. The next save writes to the new location.
+ */
+function legacyPortableSettingsPath(): string | null {
+  const dir = process.env.PORTABLE_EXECUTABLE_DIR;
+  return dir ? path.join(dir, SETTINGS_FILE) : null;
+}
+
+function readSettingsFile(): string {
+  try {
+    return readFileSync(settingsPath(), 'utf8');
+  } catch (err) {
+    const legacy = legacyPortableSettingsPath();
+    if (legacy) return readFileSync(legacy, 'utf8');
+    throw err;
+  }
 }
 
 let cache: Settings | null = null;
@@ -69,7 +86,7 @@ export function loadSettings(): Settings {
   if (cache) return cache;
   const base = defaults();
   try {
-    const raw = JSON.parse(readFileSync(settingsPath(), 'utf8')) as Partial<Settings>;
+    const raw = JSON.parse(readSettingsFile()) as Partial<Settings>;
     cache = {
       ...base,
       ...raw,

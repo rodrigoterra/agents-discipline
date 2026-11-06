@@ -7,11 +7,47 @@
   <body>
     <script>
       // Hidden renderer: owns getUserMedia + MediaRecorder. Never visible.
+      //
+      // Contract with main: every recording attempt ends in exactly one of
+      // sendData(...) or sendError(...). Main has already entered 'recording' by the time
+      // this runs, so a failure that is only logged here leaves the app stuck — which is
+      // how "it never landed" happens with no visible error.
       let recorder = null;
       let chunks = [];
       let stream = null;
       let dimensions = { width: 0, height: 0 };
       let discarded = false;
+
+      // vp9 is preferred for size, but MediaRecorder support varies by platform and
+      // GPU. Constructing with an unsupported type throws, so probe first.
+      const MIME_CANDIDATES = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+      ];
+
+      function pickMimeType() {
+        for (const type of MIME_CANDIDATES) {
+          try {
+            if (MediaRecorder.isTypeSupported(type)) return type;
+          } catch {
+            // isTypeSupported itself failing means: try the next one.
+          }
+        }
+        return '';
+      }
+
+      function fail(stage, err) {
+        const message = `${stage}: ${err && err.message ? err.message : String(err)}`;
+        console.error('[gifomator]', message);
+        try {
+          if (stream) stream.getTracks().forEach((t) => t.stop());
+        } catch {}
+        stream = null;
+        recorder = null;
+        chunks = [];
+        window.gifomator.sendError(message);
+      }
 
       window.gifomator.onStart(async ({ sourceId, maxWidth, maxHeight }) => {
         discarded = false;
@@ -34,8 +70,7 @@
             },
           });
         } catch (err) {
-          console.error('[gifomator] getUserMedia failed', err);
-          window.gifomator.sendData(new ArrayBuffer(0), 0, 0);
+          fail('getUserMedia failed', err);
           return;
         }
 
@@ -43,31 +78,58 @@
         // resolution. Deriving it from a picker thumbnail produced 320px-wide GIFs.
         const track = stream.getVideoTracks()[0];
         const settings = track ? track.getSettings() : {};
-        dimensions = {
-          width: settings.width || 0,
-          height: settings.height || 0,
-        };
+        dimensions = { width: settings.width || 0, height: settings.height || 0 };
 
-        recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+        try {
+          const mimeType = pickMimeType();
+          recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+        } catch (err) {
+          fail('MediaRecorder could not be created', err);
+          return;
+        }
+
         recorder.ondataavailable = (e) => {
           if (e.data && e.data.size > 0) chunks.push(e.data);
         };
+        recorder.onerror = (e) => fail('MediaRecorder error', e.error || e);
         recorder.onstop = async () => {
-          stream.getTracks().forEach((t) => t.stop());
+          try {
+            stream.getTracks().forEach((t) => t.stop());
+          } catch {}
           if (discarded) {
             chunks = [];
             return;
           }
-          const blob = new Blob(chunks, { type: 'video/webm' });
-          const buffer = await blob.arrayBuffer();
-          window.gifomator.sendData(buffer, dimensions.width, dimensions.height);
-          chunks = [];
+          if (chunks.length === 0) {
+            fail('recording produced no data', new Error('no chunks were recorded'));
+            return;
+          }
+          try {
+            const blob = new Blob(chunks, { type: 'video/webm' });
+            const buffer = await blob.arrayBuffer();
+            window.gifomator.sendData(buffer, dimensions.width, dimensions.height);
+          } catch (err) {
+            fail('could not read the recording', err);
+          } finally {
+            chunks = [];
+          }
         };
-        recorder.start(100);
+
+        try {
+          recorder.start(100);
+        } catch (err) {
+          fail('MediaRecorder could not start', err);
+        }
       });
 
       window.gifomator.onStop(() => {
-        if (recorder && recorder.state !== 'inactive') recorder.stop();
+        if (recorder && recorder.state !== 'inactive') {
+          recorder.stop();
+        } else {
+          // Main believes a recording is running but there is none — tell it, rather
+          // than leaving it waiting in 'encoding' for data that will never come.
+          fail('stop requested', new Error('no active recording'));
+        }
       });
 
       window.gifomator.onDiscard(() => {

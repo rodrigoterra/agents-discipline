@@ -23,13 +23,19 @@ import {
   screen,
   shell,
 } from 'electron';
-import { writeFile } from 'node:fs/promises';
+import { accessSync, constants as fsConstants, mkdirSync } from 'node:fs';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertFfmpegIsLgpl, ffmpegConfiguration, probeBinaries, resolveBinaries } from '../../core/binaries.js';
 import { encode } from '../../core/encode.js';
+import { run } from '../../core/run.js';
 import { PRESETS } from '../../core/presets.js';
 import { AbortError, EncodeError } from '../../core/types.js';
 import type { CropRect, PresetName } from '../../core/types.js';
+import { activeHotkeys } from './hotkey-policy.js';
+import type { AppState, HotkeyAction } from './hotkey-policy.js';
 import { trayIcon } from './icon.js';
 import { deliver } from './output.js';
 import { ensureScreenAccess } from './permissions.js';
@@ -39,8 +45,6 @@ import type { CaptureMode } from './settings.js';
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const rendererDir = path.join(dirname, '..', '..', 'app', 'renderer');
 const preloadPath = path.join(dirname, '..', 'preload', 'index.cjs');
-
-type AppState = 'idle' | 'selecting' | 'recording' | 'encoding';
 
 let tray: Tray | null = null;
 let recorder: BrowserWindow | null = null;
@@ -75,6 +79,7 @@ let overlayDisplay: Electron.Display | null = null;
 
 function setState(next: AppState): void {
   state = next;
+  applyHotkeys();
   updateTray();
   // The indicator shows the stop key while recording, so it is discoverable without
   // opening Settings or remembering which mode started the capture.
@@ -220,9 +225,25 @@ function ensureRecorder(): BrowserWindow {
   if (recorder && !recorder.isDestroyed()) return recorder;
   recorder = new BrowserWindow({
     show: false,
-    webPreferences: { preload: preloadPath, contextIsolation: true, nodeIntegration: false },
+    webPreferences: {
+      preload: preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false,
+      // A hidden window is throttled by default, which can stall MediaRecorder's
+      // timeslice callbacks and starve the capture.
+      backgroundThrottling: false,
+    },
   });
   void recorder.loadFile(path.join(rendererDir, 'recorder.html'));
+
+  // If the recorder's process dies mid-capture, nothing would ever answer the stop.
+  recorder.webContents.on('render-process-gone', (_e, details) => {
+    const wasCapturing = state === 'recording' || state === 'encoding';
+    recorder = null;
+    if (wasCapturing) {
+      void reportFailure('capture failed', new Error(`recorder process ended: ${details.reason}`));
+    }
+  });
   return recorder;
 }
 
@@ -275,23 +296,30 @@ async function startCapture(mode: CaptureMode): Promise<void> {
  */
 function beginRecording(sourceId: string, limits: { maxWidth: number; maxHeight: number }): void {
   setState('recording');
-  bindEscWhileRecording();
   ensureRecorder().webContents.send('recorder:start', { sourceId, ...limits });
 }
 
 function stopRecording(): void {
   if (state !== 'recording') return;
-  releaseEsc();
   setState('encoding');
   recorder?.webContents.send('recorder:stop');
+  // MediaRecorder's stop normally resolves in well under a second. If neither data nor
+  // an error arrives, the renderer is wedged — recover instead of waiting forever.
+  clearStopWatchdog();
+  stopWatchdog = setTimeout(() => {
+    void reportFailure(
+      'capture failed',
+      new Error(`recorder did not respond within ${STOP_WATCHDOG_MS / 1000}s of stopping`),
+    );
+  }, STOP_WATCHDOG_MS);
 }
 
 function discard(): void {
   if (state === 'recording') {
-    releaseEsc();
     recorder?.webContents.send('recorder:discard');
     setState('idle');
   } else if (state === 'encoding') {
+    clearStopWatchdog();
     encodeAbort?.abort();
     setState('idle');
   }
@@ -356,24 +384,48 @@ function openSettings(): void {
 
 /* --------------------------------------------------------- diagnostics -- */
 
+/** How a capture ended — consumed by the --smoke self-test. */
+export type CaptureOutcome =
+  | { ok: true; filePath: string; width: number; height: number; bytes: number; backend: string; durationMs: number }
+  | { ok: false; stage: string; error: string };
+
+/** Resolved once per capture with its outcome; set by the --smoke self-test. */
+let captureWaiter: ((outcome: CaptureOutcome) => void) | null = null;
+
+/** Overrides the configured output folder without persisting it (used by --smoke). */
+let outputFolderOverride: string | null = null;
+
+/** Fires if the recorder neither delivers data nor reports an error after a stop. */
+let stopWatchdog: NodeJS.Timeout | null = null;
+const STOP_WATCHDOG_MS = 30_000;
+
+function clearStopWatchdog(): void {
+  if (stopWatchdog) clearTimeout(stopWatchdog);
+  stopWatchdog = null;
+}
+
 function lastStderrLine(stderr: string): string {
   const lines = stderr.split('\n').map((l) => l.trim()).filter(Boolean);
   return lines[lines.length - 1]?.slice(0, 160) ?? '';
 }
 
 /**
- * Writes an encode failure to a log file and returns its path.
+ * Writes a failure to a log file and returns its path.
  *
  * Includes the capture geometry, because both encoder failures so far were caused by
  * frame size rather than by anything in the video itself.
  */
-async function writeErrorLog(err: unknown, geometry: { width: number; height: number }): Promise<string> {
+async function writeErrorLog(
+  stage: string,
+  err: unknown,
+  geometry: { width: number; height: number },
+): Promise<string> {
   const logPath = path.join(app.getPath('userData'), 'gifomator-last-error.log');
   const settings = loadSettings();
   const body = [
-    `Gifomator ${app.getVersion()} — encode failure`,
+    `Gifomator ${app.getVersion()} — ${stage}`,
     `when:     ${new Date().toISOString()}`,
-    `platform: ${process.platform} ${process.arch}`,
+    `platform: ${process.platform} ${process.arch}  electron ${process.versions.electron}`,
     `capture:  ${geometry.width}x${geometry.height}` +
       `${pendingCrop ? ` crop ${Math.round(pendingCrop.width)}x${Math.round(pendingCrop.height)}` : ''}`,
     `preset:   ${settings.preset}  nativeScale=${pendingNativeScale}`,
@@ -390,6 +442,38 @@ async function writeErrorLog(err: unknown, geometry: { width: number; height: nu
     console.error('[gifomator] could not write error log:', writeErr);
   }
   return logPath;
+}
+
+/**
+ * The single exit for every failed capture: log it, tell the user, and return to idle.
+ *
+ * Before this existed, several capture failures only reached console.error — invisible
+ * in a packaged app — and some left the state machine stuck in 'recording' or
+ * 'encoding', so hotkeys stopped responding and nothing ever landed.
+ */
+async function reportFailure(
+  stage: string,
+  err: unknown,
+  geometry: { width: number; height: number } = { width: 0, height: 0 },
+): Promise<void> {
+  clearStopWatchdog();
+  const logPath = await writeErrorLog(stage, err, geometry);
+  console.error(`[gifomator] ${stage}:`, err);
+
+  const message = err instanceof Error ? err.message : String(err);
+  const detail = err instanceof EncodeError ? lastStderrLine(err.stderr) : '';
+  const notification = new Notification({
+    title: `Gifomator — ${stage}`,
+    body: `${message}${detail ? `\n${detail}` : ''}\nClick to open the log.`,
+  });
+  notification.on('click', () => void shell.showItemInFolder(logPath));
+  notification.show();
+
+  encodeAbort = null;
+  pendingCrop = undefined;
+  pendingNativeScale = false;
+  setState('idle');
+  captureWaiter?.({ ok: false, stage, error: message });
 }
 
 /* ------------------------------------------------------------------- ipc -- */
@@ -443,12 +527,30 @@ function registerIpc(): void {
     setState('idle');
   });
 
+  // The recorder hit a failure it could not recover from (no stream, no MediaRecorder,
+  // no data). Without this the app would sit in 'recording'/'encoding' indefinitely.
+  ipcMain.on('recorder:error', (_e, message: string) => {
+    // Only a capture in flight can fail; anything else is a late echo of a discard.
+    if (state !== 'recording' && state !== 'encoding') {
+      console.error('[gifomator] recorder error while idle (ignored):', message);
+      return;
+    }
+    void reportFailure('capture failed', new Error(message));
+  });
+
   // Recorder finished: raw webm arrives, core/ turns it into a GIF.
   ipcMain.on('recorder:data', async (_e, buffer: ArrayBuffer, width: number, height: number) => {
+    clearStopWatchdog();
+    // Data arriving after a discard (stop → discard before the buffer landed) must be
+    // dropped: the user already chose to throw this recording away.
+    if (state !== 'encoding') return;
     const settings = loadSettings();
     if (buffer.byteLength === 0 || width === 0) {
-      console.error('[gifomator] capture produced no data');
-      setState('idle');
+      await reportFailure(
+        'capture failed',
+        new Error(`recorder returned ${buffer.byteLength} bytes at ${width}x${height}`),
+        { width, height },
+      );
       return;
     }
     encodeAbort = new AbortController();
@@ -460,30 +562,33 @@ function registerIpc(): void {
         nativeScale: pendingNativeScale,
         signal: encodeAbort.signal,
       });
-      await deliver(result, settings.outputFolder);
-    } catch (err) {
-      if (!(err instanceof AbortError)) {
-        // Write the tool's own stderr to a log file and point the notification at it.
-        // The first two encode failures were diagnosed by guesswork because the toast
-        // showed only the exit code; the underlying stderr is the actual evidence.
-        const logPath = await writeErrorLog(err, { width, height });
-        console.error('[gifomator] encode failed:', err);
-        const detail = err instanceof EncodeError ? lastStderrLine(err.stderr) : '';
-        const notification = new Notification({
-          title: 'Gifomator — encode failed',
-          body:
-            `${err instanceof Error ? err.message : String(err)}` +
-            `${detail ? `\n${detail}` : ''}` +
-            `\nClick to open the log.`,
-        });
-        notification.on('click', () => void shell.showItemInFolder(logPath));
-        notification.show();
-      }
-    } finally {
+      const filePath = await deliver(result, outputFolderOverride ?? settings.outputFolder);
       encodeAbort = null;
       pendingCrop = undefined;
       pendingNativeScale = false;
       setState('idle');
+      captureWaiter?.({
+        ok: true,
+        filePath,
+        width: result.width,
+        height: result.height,
+        bytes: result.bytes,
+        backend: result.backendUsed,
+        durationMs: result.durationMs,
+      });
+    } catch (err) {
+      if (err instanceof AbortError) {
+        // A discard during encoding is the user's decision, not a failure.
+        encodeAbort = null;
+        pendingCrop = undefined;
+        pendingNativeScale = false;
+        setState('idle');
+        captureWaiter?.({ ok: false, stage: 'discarded', error: 'aborted by user' });
+        return;
+      }
+      // The tool's own stderr goes to the log; the toast links to it. The first two
+      // encode failures were diagnosed by guesswork because only the exit code showed.
+      await reportFailure('encode failed', err, { width, height });
     }
   });
 
@@ -535,65 +640,304 @@ function registerIpc(): void {
 /** Bindings the OS refused, surfaced in Settings rather than failing silently. */
 export const failedBindings = new Set<string>();
 
-function registerHotkeys(): void {
-  globalShortcut.unregisterAll();
-  failedBindings.clear();
-  const { hotkeys } = loadSettings();
+/** Accelerators currently held, so a state change only touches what differs. */
+const heldBindings = new Map<string, HotkeyAction>();
 
-  const bind = (accelerator: string, fn: () => void) => {
-    if (!accelerator) return;
-    try {
-      if (!globalShortcut.register(accelerator, fn)) failedBindings.add(accelerator);
-    } catch {
-      failedBindings.add(accelerator);
-    }
-  };
-
-  // Mode keys double as stop while recording — "re-press the start key" from the spec.
-  bind(hotkeys.region, () => (state === 'recording' ? stopRecording() : void startCapture('region')));
-  bind(hotkeys.window, () => (state === 'recording' ? stopRecording() : void startCapture('window')));
-  bind(hotkeys.screen, () => (state === 'recording' ? stopRecording() : void startCapture('screen')));
-  // Dedicated stop, so you never have to remember which mode started the recording.
-  bind(hotkeys.stop, () => stopRecording());
-  bind(hotkeys.discard, () => discard());
+function acceleratorFor(action: HotkeyAction): string {
+  if (action === 'escape') return 'Escape';
+  return loadSettings().hotkeys[action] ?? '';
 }
 
-/**
- * Esc is grabbed only while recording, then released.
- *
- * A permanent global Esc binding would swallow the key from every other application,
- * which is hostile. The spec says Esc stops and saves; it only needs to mean that
- * during a recording.
- */
-function bindEscWhileRecording(): void {
-  try {
-    globalShortcut.register('Escape', () => stopRecording());
-  } catch {
-    // Esc is unavailable on this system; the dedicated stop hotkey still works.
+function handlerFor(action: HotkeyAction): () => void {
+  switch (action) {
+    // Capture keys double as stop while recording — "re-press the start key".
+    case 'region':
+    case 'window':
+    case 'screen':
+      return () => (state === 'recording' ? stopRecording() : void startCapture(action));
+    case 'stop':
+    case 'escape':
+      return () => stopRecording();
+    case 'discard':
+      return () => discard();
   }
 }
 
-function releaseEsc(): void {
+/**
+ * Brings the OS-level registrations in line with activeHotkeys(state).
+ *
+ * Called on every state change. Stop, discard and Esc are only held during a capture,
+ * because a global registration steals the key from every other application.
+ */
+function applyHotkeys(): void {
+  const wanted = new Map<string, HotkeyAction>();
+  for (const action of activeHotkeys(state)) {
+    const accelerator = acceleratorFor(action);
+    if (accelerator) wanted.set(accelerator, action);
+  }
+
+  for (const [accelerator, action] of heldBindings) {
+    if (wanted.get(accelerator) !== action) {
+      try {
+        globalShortcut.unregister(accelerator);
+      } catch {
+        // Already gone — the desired state either way.
+      }
+      heldBindings.delete(accelerator);
+    }
+  }
+
+  for (const [accelerator, action] of wanted) {
+    if (heldBindings.has(accelerator)) continue;
+    try {
+      if (globalShortcut.register(accelerator, handlerFor(action))) {
+        heldBindings.set(accelerator, action);
+        failedBindings.delete(accelerator);
+      } else {
+        failedBindings.add(accelerator);
+      }
+    } catch {
+      failedBindings.add(accelerator);
+    }
+  }
+}
+
+/** Re-registers from scratch — used when the user rebinds a key in Settings. */
+function registerHotkeys(): void {
+  globalShortcut.unregisterAll();
+  heldBindings.clear();
+  failedBindings.clear();
+  applyHotkeys();
+}
+
+/* ---------------------------------------------------------- self-test -- */
+
+/**
+ * `--smoke [--smoke-out=<file>]`: boot the packaged app, exercise it, write a JSON
+ * report, exit 0/1. Run by CI on the real Windows and macOS runners.
+ *
+ * It exists because the whole app/ layer had never been executed by anything but a
+ * person. Every Windows defect so far — no bundled ffmpeg.exe, a 320px window capture,
+ * gifski's stack overflow, palettegen's memory wall — lived in exactly the code no
+ * headless test could reach. This checks, in the shipped binary:
+ *   - the tray and the indicator come up,
+ *   - only the capture keys are held while idle (the hotkey-scoping regression),
+ *   - the BUNDLED ffmpeg/gifski resolve and encode a 1080p clip at 1:1,
+ *   - on Windows (and Linux/Xvfb), a real 2.5 s screen capture runs end to end and
+ *     lands as a GIF,
+ *     with stop/discard/Esc held only while recording.
+ * macOS skips the live capture: it needs a Screen Recording grant a runner cannot give.
+ */
+async function runSmoke(): Promise<void> {
+  const outArg = process.argv.find((a) => a.startsWith('--smoke-out='));
+  const outPath = outArg ? outArg.slice('--smoke-out='.length) : path.join(tmpdir(), 'gifomator-smoke.json');
+  const checks: Record<string, unknown> = {};
+  const report: Record<string, unknown> = {
+    ok: false,
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    platform: `${process.platform} ${process.arch}`,
+    checks,
+  };
+
+  const finish = async (ok: boolean) => {
+    report.ok = ok;
+    const json = JSON.stringify(report, null, 2);
+    try {
+      await writeFile(outPath, json, 'utf8');
+    } catch (err) {
+      console.error('[smoke] could not write report:', err);
+    }
+    console.log(json);
+    app.exit(ok ? 0 : 1);
+  };
+
+  // A hang must fail the job, not stall it until the runner's own timeout.
+  const watchdog = setTimeout(() => {
+    report.error = 'smoke timed out after 180s';
+    void finish(false);
+  }, 180_000);
+
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const settings = loadSettings();
+  const scopedKeys = [settings.hotkeys.stop, settings.hotkeys.discard, 'Escape'];
+
   try {
-    globalShortcut.unregister('Escape');
-  } catch {
-    // Nothing registered — the desired state either way.
+    checks.tray = Boolean(tray);
+    checks.indicator = Boolean(indicator && !indicator.isDestroyed());
+    checks.failedBindings = [...failedBindings];
+
+    const idleHeld = [...heldBindings.keys()];
+    checks.idleHeldBindings = idleHeld;
+    const leakedWhileIdle = idleHeld.filter((k) => scopedKeys.includes(k));
+    checks.hotkeyScopingOk = leakedWhileIdle.length === 0;
+
+    checks.binaries = await probeBinaries();
+    checks.ffmpegConfiguration = (await ffmpegConfiguration()).slice(0, 120);
+    try {
+      await assertFfmpegIsLgpl();
+      checks.ffmpegLgpl = true;
+    } catch {
+      checks.ffmpegLgpl = false; // known: the bundled build is GPL; informational
+    }
+
+    // Encode a synthesized 1080p clip through the bundled binaries, at 1:1.
+    const workDir = await mkdtemp(path.join(tmpdir(), 'gifomator-smoke-'));
+    const clip = path.join(workDir, 'clip.mp4');
+    await run(
+      resolveBinaries().ffmpeg,
+      ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=duration=2:size=1920x1080:rate=30',
+        '-c:v', 'mpeg4', '-q:v', '5', clip],
+      { label: 'ffmpeg (smoke clip)' },
+    );
+    const clipBytes = new Uint8Array(await readFile(clip));
+
+    const tryEncode = async (backend?: 'gifski' | 'ffmpeg') => {
+      try {
+        const r = await encode(clipBytes, { preset: 'balanced', sourceWidth: 1920, nativeScale: true, backend });
+        return { ok: true, backend: r.backendUsed, size: `${r.width}x${r.height}`, bytes: r.bytes, ms: r.durationMs };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+          stderr: err instanceof EncodeError ? err.stderr.slice(-400) : undefined,
+        };
+      }
+    };
+    // Default path (gifski, falling back to ffmpeg) and each backend explicitly, so a
+    // gifski crash shows up as data instead of being hidden by the fallback.
+    const encodeDefault = await tryEncode();
+    const encodeGifski = await tryEncode('gifski');
+    const encodeFfmpeg = await tryEncode('ffmpeg');
+    checks.encodeDefault = encodeDefault;
+    checks.encodeGifski = encodeGifski;
+    checks.encodeFfmpeg = encodeFfmpeg;
+
+    let captureOk = true;
+    // Live capture everywhere except macOS, whose Screen Recording grant a runner
+    // cannot give. On Linux under Xvfb it exercises the same recorder path as Windows.
+    if (process.platform !== 'darwin') {
+      outputFolderOverride = workDir;
+      const sources = await desktopCapturer.getSources({ types: ['screen'] });
+      const source = sources[0];
+      if (!source) throw new Error('desktopCapturer returned no screen sources');
+      const display = screen.getPrimaryDisplay();
+
+      const outcome = new Promise<CaptureOutcome>((resolve) => {
+        captureWaiter = resolve;
+      });
+      beginRecording(source.id, {
+        maxWidth: Math.round(display.size.width * display.scaleFactor),
+        maxHeight: Math.round(display.size.height * display.scaleFactor),
+      });
+      await sleep(2_500);
+      const recordingHeld = [...heldBindings.keys()];
+      stopRecording();
+
+      const result = await Promise.race([
+        outcome,
+        sleep(90_000).then((): CaptureOutcome => ({ ok: false, stage: 'smoke', error: 'no outcome within 90s' })),
+      ]);
+      captureWaiter = null;
+      checks.capture = result;
+      checks.recordingHeldBindings = recordingHeld;
+      // Back at idle the scoped keys must be released again, or Save As stays broken
+      // after the first capture even though startup looked fine.
+      const afterHeld = [...heldBindings.keys()];
+      checks.afterCaptureHeldBindings = afterHeld;
+      checks.scopedKeysReleased = !afterHeld.some((k) => scopedKeys.includes(k));
+      checks.stopHeldWhileRecording = recordingHeld.includes(settings.hotkeys.stop) || failedBindings.has(settings.hotkeys.stop);
+      captureOk = result.ok && checks.scopedKeysReleased === true;
+    } else {
+      checks.capture = { skipped: 'live capture needs a Screen Recording grant a CI runner cannot give' };
+    }
+
+    const ok =
+      checks.tray === true &&
+      checks.indicator === true &&
+      checks.hotkeyScopingOk === true &&
+      encodeDefault.ok &&
+      encodeFfmpeg.ok &&
+      captureOk;
+    clearTimeout(watchdog);
+    await finish(ok);
+  } catch (err) {
+    clearTimeout(watchdog);
+    report.error = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    await finish(false);
   }
 }
 
 /* ----------------------------------------------------------- lifecycle -- */
 
-app.whenReady().then(() => {
-  // Menu-bar / tray resident: no dock icon on macOS.
-  if (process.platform === 'darwin') app.dock?.hide();
+const SMOKE = process.argv.includes('--smoke');
+const PORTABLE_DIR = process.env.PORTABLE_EXECUTABLE_DIR;
 
-  tray = new Tray(trayIcon(false));
-  registerIpc();
-  registerHotkeys();
-  updateTray();
-  ensureRecorder();
-  createIndicator();
-});
+/**
+ * Portable build: keep Electron's own data (Chromium profile, caches, the error log,
+ * settings) in a folder beside the .exe instead of %APPDATA%.
+ *
+ * Must run before 'ready' and before the single-instance lock, which lives in userData.
+ * Skipped if the folder is not writable (e.g. run from a read-only share), in which
+ * case the normal per-user location is the only option that works.
+ */
+function configurePortableData(): void {
+  if (!PORTABLE_DIR) return;
+  const dataDir = path.join(PORTABLE_DIR, 'Gifomator-data');
+  try {
+    mkdirSync(dataDir, { recursive: true });
+    accessSync(dataDir, fsConstants.W_OK);
+    app.setPath('userData', dataDir);
+  } catch (err) {
+    console.error('[gifomator] portable data dir not writable, using default:', err);
+  }
+}
+
+/**
+ * Windows toast attribution.
+ *
+ * Without an AppUserModelID, toasts are headed "electron.app.Gifomator". The installer
+ * build registers a Start-menu shortcut carrying the appId, so Windows resolves that ID
+ * to the product name. The portable build has no shortcut, and Windows then shows the
+ * raw ID — so it gets the bare product name instead.
+ */
+function configureToastIdentity(): void {
+  if (process.platform !== 'win32') return;
+  app.setAppUserModelId(PORTABLE_DIR ? 'Gifomator' : 'io.arvore.gifomator');
+}
+
+configurePortableData();
+configureToastIdentity();
+
+// One tray, one set of hotkeys. A second launch (easy with a portable .exe) would
+// otherwise add a second tray icon whose hotkey registrations all fail. The smoke
+// self-test skips the lock so it can always run.
+const primaryInstance = SMOKE || app.requestSingleInstanceLock();
+
+if (!primaryInstance) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    // Give the second launch a visible answer instead of silently exiting.
+    if (!indicator || indicator.isDestroyed()) createIndicator();
+    openSettings();
+  });
+
+  app.whenReady().then(() => {
+    // Menu-bar / tray resident: no dock icon on macOS.
+    if (process.platform === 'darwin') app.dock?.hide();
+
+    tray = new Tray(trayIcon(false));
+    registerIpc();
+    registerHotkeys();
+    updateTray();
+    ensureRecorder();
+    createIndicator();
+
+    if (SMOKE) void runSmoke();
+  });
+}
 
 app.on('window-all-closed', () => {
   // Tray-resident: closing every window must not quit the app.

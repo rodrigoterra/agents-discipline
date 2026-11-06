@@ -13,15 +13,20 @@ defaults:
   run:
     working-directory: gifomator
 
+# checkout@v5 / setup-node@v5 / upload-artifact@v6 are the first majors of each that
+# run on Node 24 (verified against each tag's action.yml — upload-artifact@v5 is still
+# node20). The v4s ran on a deprecated Node 20 runtime.
+
 jobs:
   # The encoder is the only layer verifiable without a GUI, so it gets its own
   # fast Linux job rather than waiting on the platform build matrix.
   core:
-    name: core tests (linux)
+    name: core tests + smoke (linux)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - run: npm ci || npm install
@@ -33,15 +38,25 @@ jobs:
           # The headless-test story depends on this entirely, so it is checked
           # against a tree with Electron physically removed, not just by lint.
           rm -rf node_modules/electron
-          node --test test/purity.test.mjs test/presets.test.mjs
+          node --test test/purity.test.mjs test/presets.test.mjs test/hotkeys.test.mjs
       - run: npm install
       - run: node --test test/*.test.mjs
+      - name: Smoke test (Electron under Xvfb, live capture)
+        # Linux is not a shipping target, but Xvfb has no permission gate, so this runs
+        # the same recorder → encoder path as Windows on every push, in seconds.
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb >/dev/null
+          OUT="$RUNNER_TEMP/smoke-linux.json"
+          xvfb-run -a -s "-screen 0 1920x1080x24" npx electron . --no-sandbox --smoke --smoke-out="$OUT" || true
+          cat "$OUT"
+          node -e "process.exit(require(process.argv[1]).ok ? 0 : 1)" "$OUT"
 
   build:
     name: build ${{ matrix.os }}
     # Needed so the release step can create a release and upload assets.
     permissions:
       contents: write
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -54,8 +69,8 @@ jobs:
             artifact: gifomator-macos
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - run: npm install
@@ -66,7 +81,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: npm run ${{ matrix.script }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact }}
           path: |
@@ -75,6 +90,27 @@ jobs:
             gifomator/release/*.dmg
           if-no-files-found: error
           retention-days: 14
+
+      # The only automated check the app/ layer has. Boots the PACKAGED binary — with
+      # its bundled ffmpeg/gifski — and runs the --smoke self-test (see runSmoke in
+      # app/main/index.ts). On Windows that includes a real screen capture. A failure
+      # here stops the release step below.
+      - name: Smoke test (packaged app)
+        shell: bash
+        timeout-minutes: 6
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            APP="release/win-unpacked/Gifomator.exe"
+          else
+            APP="$(ls -d release/mac*/Gifomator.app | head -1)/Contents/MacOS/Gifomator"
+          fi
+          OUT="$RUNNER_TEMP/smoke.json"
+          echo "launching $APP"
+          # The JSON report is the source of truth; a GUI binary's exit code is not
+          # reliably propagated through every shell.
+          "$APP" --smoke --smoke-out="$OUT" || true
+          cat "$OUT"
+          node -e "process.exit(require(process.argv[1]).ok ? 0 : 1)" "$OUT"
 
       # Actions artifacts require a signed-in GitHub session to download, which makes
       # them useless for handing a build to someone on a phone, in Slack, or on another
@@ -98,24 +134,32 @@ jobs:
           fi
           echo "releasing as $TAG"
 
+          # Refuse to overwrite a release built from a different commit. Without this,
+          # dispatching without bumping package.json would silently --clobber the
+          # assets of an already-published version.
+          EXISTING=$(gh release view "$TAG" --json targetCommitish -q .targetCommitish 2>/dev/null || true)
+          if [ -n "$EXISTING" ] && [ "$EXISTING" != "${{ github.sha }}" ]; then
+            echo "::error::$TAG already exists for commit $EXISTING. Bump gifomator/package.json version before releasing."
+            exit 1
+          fi
+
           # Both matrix legs race to create the release; whichever loses just uploads.
           gh release create "$TAG" \
             --target "${{ github.sha }}" \
             --title "Gifomator $TAG" \
             --notes "Unsigned development build — internal/dev only.
 
-          **Windows:** download the \`-win-\` zip, unzip, run \`Gifomator.exe\`. SmartScreen will warn (unsigned by design) — More info → Run anyway. The app has **no window**; it lives in the system tray.
+          **Windows:** \`-portable.exe\` is a single file, no install — settings and data live in a \`Gifomator-data\` folder beside it. \`-setup.exe\` installs; the \`.zip\` unzips and runs. SmartScreen will warn (unsigned by design) — More info → Run anyway. The app has **no window**; it lives in the system tray and the floating indicator.
 
-          **macOS:** download the \`-mac-\` zip, unzip, right-click → Open. Screen Recording permission is required.
+          **macOS:** download the \`.dmg\` or \`-mac-\` zip, right-click → Open. Screen Recording permission is required.
 
           Review checklist: \`gifomator/REVIEW-WINDOWS.md\`." \
             || echo "release already exists, uploading to it"
 
           # Path is relative to gifomator/ — defaults.run.working-directory applies to
           # `run:` steps (unlike actions/upload-artifact, whose paths are workspace-relative).
-          # .exe as well as .zip: the Windows matrix leg emits a portable single-file
-          # build and an NSIS installer alongside the zip. nullglob so the macOS leg,
-          # which produces no .exe, does not upload a literal "release/*.exe".
+          # nullglob so the macOS leg, which produces no .exe, does not upload a literal
+          # "release/*.exe".
           shopt -s nullglob
           ASSETS=(release/*.zip release/*.exe release/*.dmg)
           printf 'uploading: %s\n' "${ASSETS[@]}"

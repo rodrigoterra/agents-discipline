@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('gifomator', {
   onDiscard: (cb: () => void) => ipcRenderer.on('recorder:discard', () => cb()),
   sendData: (buffer: ArrayBuffer, width: number, height: number) =>
     ipcRenderer.send('recorder:data', buffer, width, height),
+  sendError: (message: string) => ipcRenderer.send('recorder:error', message),
 
   // Floating desktop indicator
   onIndicatorState: (cb: (state: string, stopKey: string, mode: string) => void) =>
