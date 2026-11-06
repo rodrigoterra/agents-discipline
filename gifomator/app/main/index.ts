@@ -16,6 +16,7 @@ import {
   Menu,
   Tray,
   app,
+  clipboard,
   desktopCapturer,
   Notification,
   globalShortcut,
@@ -37,7 +38,7 @@ import type { CropRect, PresetName } from '../../core/types.js';
 import { activeHotkeys } from './hotkey-policy.js';
 import type { AppState, HotkeyAction } from './hotkey-policy.js';
 import { trayIcon } from './icon.js';
-import { deliver } from './output.js';
+import { deliver, humanSize, notify } from './output.js';
 import { ensureScreenAccess } from './permissions.js';
 import { loadSettings, saveSettings } from './settings.js';
 import type { CaptureMode } from './settings.js';
@@ -92,6 +93,24 @@ function setState(next: AppState): void {
 }
 
 /* --------------------------------------------------- floating indicator -- */
+
+/** What clicking the indicator's current result message opens. */
+let flashRevealPath: string | null = null;
+
+/**
+ * Shows a transient result or failure on the floating indicator.
+ *
+ * Every outcome is reported here as well as by system notification, because macOS
+ * (Electron 42+) refuses notifications from unsigned apps — and this build is
+ * unsigned. The indicator needs no OS permission, so it is the channel that always
+ * works when it is open.
+ */
+function flashIndicator(kind: 'success' | 'error', text: string, revealPath: string): void {
+  flashRevealPath = revealPath;
+  if (indicator && !indicator.isDestroyed()) {
+    indicator.webContents.send('indicator:flash', kind, text);
+  }
+}
 
 /**
  * Small always-on-top badge showing the app is alive and what it is doing.
@@ -462,12 +481,12 @@ async function reportFailure(
 
   const message = err instanceof Error ? err.message : String(err);
   const detail = err instanceof EncodeError ? lastStderrLine(err.stderr) : '';
-  const notification = new Notification({
-    title: `Gifomator — ${stage}`,
-    body: `${message}${detail ? `\n${detail}` : ''}\nClick to open the log.`,
-  });
-  notification.on('click', () => void shell.showItemInFolder(logPath));
-  notification.show();
+  notify(
+    `Gifomator — ${stage}`,
+    `${message}${detail ? `\n${detail}` : ''}\nClick to open the log.`,
+    () => shell.showItemInFolder(logPath),
+  );
+  flashIndicator('error', `${stage[0]!.toUpperCase()}${stage.slice(1)} — click for log`, logPath);
 
   encodeAbort = null;
   pendingCrop = undefined;
@@ -563,6 +582,7 @@ function registerIpc(): void {
         signal: encodeAbort.signal,
       });
       const filePath = await deliver(result, outputFolderOverride ?? settings.outputFolder);
+      flashIndicator('success', `Saved ${humanSize(result.bytes)} · copied`, filePath);
       encodeAbort = null;
       pendingCrop = undefined;
       pendingNativeScale = false;
@@ -615,6 +635,9 @@ function registerIpc(): void {
 
   ipcMain.on('indicator:start', () => void startCapture(preferredMode));
   ipcMain.on('indicator:stop', () => stopRecording());
+  ipcMain.on('indicator:reveal', () => {
+    if (flashRevealPath) shell.showItemInFolder(flashRevealPath);
+  });
 
   ipcMain.on('indicator:menu', (_e, x: number, y: number) => {
     if (!indicator || indicator.isDestroyed()) return;
@@ -768,6 +791,23 @@ async function runSmoke(): Promise<void> {
     checks.indicator = Boolean(indicator && !indicator.isDestroyed());
     checks.failedBindings = [...failedBindings];
 
+    // Informational: does the OS actually display our toasts? Since Electron 42 macOS
+    // refuses notifications from unsigned apps; this records whether that bites the
+    // shipped build. The floating indicator reports every outcome regardless.
+    checks.notification = await new Promise<string>((resolve) => {
+      const probe = new Notification({ title: 'Gifomator self-test', body: 'notification probe', silent: true });
+      const timer = setTimeout(() => resolve('no show/failed event within 5s'), 5_000);
+      probe.on('show', () => {
+        clearTimeout(timer);
+        resolve('shown');
+      });
+      probe.on('failed', (_e, error) => {
+        clearTimeout(timer);
+        resolve(`failed: ${error}`);
+      });
+      probe.show();
+    });
+
     const idleHeld = [...heldBindings.keys()];
     checks.idleHeldBindings = idleHeld;
     const leakedWhileIdle = idleHeld.filter((k) => scopedKeys.includes(k));
@@ -842,13 +882,31 @@ async function runSmoke(): Promise<void> {
       captureWaiter = null;
       checks.capture = result;
       checks.recordingHeldBindings = recordingHeld;
+
+      // Read the clipboard back: the delivered GIF must be there as a FILE reference
+      // (text/uri-list → CF_HDROP on Windows), not just as text — that is what makes a
+      // paste into Slack or Explorer carry the animated file.
+      let clipboardOk = false;
+      if (result.ok) {
+        try {
+          const items = await clipboard.read();
+          checks.clipboardTypes = items.flatMap((i) => i.types);
+          const fileItem = items.find((i) => i.types.includes('text/uri-list'));
+          const uris = fileItem ? await (await fileItem.getType('text/uri-list')).text() : '';
+          // Output names are Gifomator-YYYYMMDD-HHMMSS.gif — nothing a file:// URI escapes.
+          clipboardOk = uris.includes(path.basename(result.filePath));
+          checks.clipboardFileReference = clipboardOk ? uris.trim() : `missing (got: ${uris || 'nothing'})`;
+        } catch (err) {
+          checks.clipboardFileReference = `read failed: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      }
       // Back at idle the scoped keys must be released again, or Save As stays broken
       // after the first capture even though startup looked fine.
       const afterHeld = [...heldBindings.keys()];
       checks.afterCaptureHeldBindings = afterHeld;
       checks.scopedKeysReleased = !afterHeld.some((k) => scopedKeys.includes(k));
       checks.stopHeldWhileRecording = recordingHeld.includes(settings.hotkeys.stop) || failedBindings.has(settings.hotkeys.stop);
-      captureOk = result.ok && checks.scopedKeysReleased === true;
+      captureOk = result.ok && checks.scopedKeysReleased === true && clipboardOk;
     } else {
       checks.capture = { skipped: 'live capture needs a Screen Recording grant a CI runner cannot give' };
     }

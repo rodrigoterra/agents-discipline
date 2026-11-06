@@ -6,9 +6,10 @@
  * flattens an animated GIF to a static bitmap — pasting it into Slack would silently
  * drop the animation, which is the entire point of the tool.
  */
-import { Notification, clipboard, shell } from 'electron';
+import { ClipboardItem, Notification, clipboard, shell } from 'electron';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { EncodeResult } from '../../core/types.js';
 
 function timestampName(): string {
@@ -20,57 +21,76 @@ function timestampName(): string {
   );
 }
 
-function humanSize(bytes: number): string {
+export function humanSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /**
- * Places a file reference on the clipboard in the OS-native flavour, plus the path
- * as plain text so it can be pasted into a terminal.
+ * Places the GIF on the clipboard as a real file, plus its path as plain text.
  *
- * Electron has no cross-platform file-list clipboard API, so this uses the buffer
- * flavours each platform's paste targets actually read.
+ * Since Electron 44 the `text/uri-list` MIME type maps to each OS's native
+ * copied-files format — CF_HDROP on Windows, NSFilenamesPboardType on macOS — so
+ * pasting into Slack, Explorer or Finder pastes the actual file and keeps the
+ * animation, while a terminal still gets the path from `text/plain`. Before this,
+ * Windows had no way to receive a file reference at all and only ever got the path.
+ *
+ * Both representations go in one ClipboardItem, so they are committed atomically.
  */
-function writeFileReference(filePath: string): void {
+async function writeFileReference(filePath: string): Promise<void> {
   try {
-    if (process.platform === 'darwin') {
-      // NSFilenamesPboardType expects a plist array of paths.
-      const plist =
-        '<?xml version="1.0" encoding="UTF-8"?>' +
-        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" ' +
-        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">' +
-        `<plist version="1.0"><array><string>${filePath}</string></array></plist>`;
-      clipboard.writeBuffer('NSFilenamesPboardType', Buffer.from(plist, 'utf8'));
-      clipboard.writeText(filePath);
-    } else if (process.platform === 'win32') {
-      // CF_HDROP is not exposed by Electron; the text path is the portable fallback.
-      clipboard.writeText(filePath);
-    } else {
-      clipboard.write({ text: filePath });
-    }
+    await clipboard.write([
+      new ClipboardItem({
+        'text/uri-list': pathToFileURL(filePath).href,
+        'text/plain': filePath,
+      }),
+    ]);
   } catch (err) {
-    console.error('[gifomator] clipboard write failed:', err);
-    clipboard.writeText(filePath);
+    console.error('[gifomator] file-reference clipboard write failed; writing path only:', err);
+    try {
+      await clipboard.writeText(filePath);
+    } catch (textErr) {
+      console.error('[gifomator] clipboard unavailable:', textErr);
+    }
   }
+}
+
+/** A human-readable one-liner describing a finished GIF. */
+export function describeResult(filePath: string, result: EncodeResult): string {
+  return (
+    `${path.basename(filePath)} — ${humanSize(result.bytes)}, ` +
+    `${result.width}×${result.height}, ${result.frameCount} frames ` +
+    `(${(result.durationMs / 1000).toFixed(1)}s)`
+  );
+}
+
+/**
+ * Shows a system notification, reporting whether the OS actually displayed it.
+ *
+ * Since Electron 42, macOS notifications go through UNNotification, which refuses to
+ * display for apps that are not code-signed and emits `failed` instead — and this
+ * build is unsigned by design. The caller therefore always ALSO reports through the
+ * floating indicator, which needs no OS permission; this function only tells it
+ * whether the toast was the channel that worked.
+ */
+export function notify(title: string, body: string, onClick?: () => void): Notification {
+  const notification = new Notification({ title, body });
+  if (onClick) notification.on('click', onClick);
+  notification.on('failed', (_e, error) => {
+    console.error(`[gifomator] notification not shown (${title}):`, error);
+  });
+  notification.show();
+  return notification;
 }
 
 export async function deliver(result: EncodeResult, outputFolder: string): Promise<string> {
   const filePath = path.join(outputFolder, timestampName());
   await writeFile(filePath, result.gif);
 
-  writeFileReference(filePath);
+  await writeFileReference(filePath);
 
-  const notification = new Notification({
-    title: 'GIF ready',
-    body:
-      `${path.basename(filePath)} — ${humanSize(result.bytes)}, ` +
-      `${result.width}×${result.height}, ${result.frameCount} frames ` +
-      `(${(result.durationMs / 1000).toFixed(1)}s)`,
-  });
-  notification.on('click', () => shell.showItemInFolder(filePath));
-  notification.show();
+  notify('GIF ready', describeResult(filePath, result), () => shell.showItemInFolder(filePath));
 
   return filePath;
 }

@@ -31,6 +31,14 @@
       #dot { width: 9px; height: 9px; border-radius: 50%; background: #a1a1aa; flex: 0 0 auto; }
       body.recording #dot { background: #e5484d; animation: pulse 1.2s ease-in-out infinite; }
       body.encoding  #dot { background: #f5a524; animation: pulse 0.9s ease-in-out infinite; }
+
+      /* Transient result/failure message. While shown, the label is a click target
+         (reveal the file / open the log) instead of a drag handle — a drag region
+         swallows clicks. */
+      body.flash #handle { -webkit-app-region: no-drag; cursor: pointer; }
+      body.flash-success #dot { background: #30a46c; animation: none; }
+      body.flash-error #dot { background: #e5484d; animation: none; }
+      body.flash #label { text-decoration: underline dotted rgba(255,255,255,0.4); }
       @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.3 } }
       #label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -108,7 +116,43 @@
       const SQUARE = '<rect x="6" y="6" width="12" height="12" rx="2"/>';
       const CIRCLE = '<circle cx="12" cy="12" r="7"/>';
 
+      // Results and failures are reported here as well as by system notification:
+      // macOS refuses notifications from unsigned apps (Electron 42+), and this bar
+      // needs no OS permission, so it is the channel that always works.
+      let flashTimer = null;
+      let flashing = false;
+      let lastState = { state: 'idle', stopKey: '', mode: '' };
+
+      function endFlash() {
+        flashing = false;
+        clearTimeout(flashTimer);
+        document.body.classList.remove('flash', 'flash-success', 'flash-error');
+        render(lastState.state, lastState.stopKey, lastState.mode);
+      }
+
+      window.gifomator.onIndicatorFlash((kind, text) => {
+        flashing = true;
+        clearTimeout(flashTimer);
+        document.body.className = `idle flash flash-${kind}`;
+        label.textContent = text;
+        label.title = kind === 'success' ? 'Click to show in folder' : 'Click to open the log';
+        flashTimer = setTimeout(endFlash, kind === 'success' ? 7000 : 12000);
+      });
+
+      document.getElementById('handle').addEventListener('click', () => {
+        if (!flashing) return;
+        window.gifomator.indicatorReveal();
+        endFlash();
+      });
+
       window.gifomator.onIndicatorState((state, stopKey, mode) => {
+        lastState = { state, stopKey, mode };
+        // A new capture starting cancels any lingering result message.
+        if (flashing && state !== 'idle') endFlash();
+        if (!flashing) render(state, stopKey, mode);
+      });
+
+      function render(state, stopKey, mode) {
         current = state;
         document.body.className = state;
 
@@ -125,7 +169,7 @@
         // Nothing to start or stop mid-selection or mid-encode.
         record.disabled = state === 'selecting' || state === 'encoding';
         capture.disabled = state !== 'idle';
-      });
+      }
 
       record.addEventListener('click', () => {
         if (current === 'recording') window.gifomator.indicatorStop();

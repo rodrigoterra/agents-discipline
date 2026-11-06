@@ -31,6 +31,9 @@ contextBridge.exposeInMainWorld('gifomator', {
   indicatorStart: () => ipcRenderer.send('indicator:start'),
   indicatorStop: () => ipcRenderer.send('indicator:stop'),
   indicatorMenu: (x: number, y: number) => ipcRenderer.send('indicator:menu', x, y),
+  onIndicatorFlash: (cb: (kind: 'success' | 'error', text: string) => void) =>
+    ipcRenderer.on('indicator:flash', (_e, kind, text) => cb(kind, text)),
+  indicatorReveal: () => ipcRenderer.send('indicator:reveal'),
 
   // Settings
   getSettings: () => ipcRenderer.invoke('settings:get'),
